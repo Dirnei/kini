@@ -1,0 +1,33 @@
+# Repo metadata
+.git/
+.gitignore
+.gitattributes
+
+# Compose / docker itself isn't needed inside the image
+docker-compose.yml
+docker-compose.*.yml
+
+# Editor / OS noise
+.vs/
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Build / generated artifacts
+**/bin/
+**/obj/
+**/out/
+**/publish/
+**/generated/
+**/Generated/
+**/dist/
+**/node_modules/
+src/Kini.Api/wwwroot/
+
+# Local config / secrets
+**/appsettings.Local.json
+**/appsettings.Development.json
+**/.env
+**/.env.local
+**/.env.*.local

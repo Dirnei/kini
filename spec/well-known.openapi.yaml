@@ -1,0 +1,158 @@
+openapi: 3.1.0
+info:
+  title: '<service> Well-Known Endpoints'
+  version: 0.1.0
+  summary: Public, unauthenticated key-publishing endpoints served from per-customer domains.
+  description: |
+    These endpoints implement external standards and conventions that existing
+    tools consume directly. They are served from each customer's verified domain
+    (via CNAME + automated TLS at the <service> edge), not from a <service>-controlled
+    host.
+
+    - **WKD (Web Key Directory)** — draft-koch-openpgp-webkey-service.
+      `gpg --locate-keys alice@acme.tld` resolves the key by constructing one of
+      these URLs and fetching it.
+    - **`/{user}.keys`** — GitHub convention. Consumed natively by Ansible's
+      `authorized_key` module and `ssh-import-id`.
+    - **`/{user}.gpg`** — GitHub convention. ASCII-armored OpenPGP key.
+
+    All endpoints are unauthenticated. Responses are intentionally minimal:
+    `200` with the key bytes, or `404` if no such key exists. No JSON envelopes;
+    these endpoints must match what their respective clients expect byte-for-byte.
+
+    For the authenticated management API used to publish keys to this surface,
+    see `api.openapi.yaml`.
+
+  contact:
+    name: '<service> team'
+  license:
+    name: TBD
+
+# Two server entries reflect the two host conventions WKD allows.
+# `openpgpkey.<domain>` for the advanced method; the apex domain for the direct
+# method and the GitHub-style `.keys` / `.gpg` endpoints.
+servers:
+  - url: https://openpgpkey.{customerDomain}
+    description: WKD advanced method host (per customer)
+    variables:
+      customerDomain:
+        default: acme.tld
+        description: Customer's verified domain.
+  - url: https://{customerDomain}
+    description: WKD direct method + `.keys` + `.gpg` (per customer)
+    variables:
+      customerDomain:
+        default: acme.tld
+        description: Customer's verified domain.
+
+tags:
+  - name: wkd
+    description: OpenPGP Web Key Directory endpoints.
+  - name: github-style
+    description: GitHub-style `.keys` and `.gpg` endpoints.
+
+paths:
+  /.well-known/openpgpkey/hu/{localHash}:
+    parameters:
+      - $ref: '#/components/parameters/LocalHash'
+    get:
+      tags: [wkd]
+      operationId: wkdDirect
+      summary: WKD direct method. Returns the binary OpenPGP transferable public key.
+      description: |
+        Served from `https://<domain>/.well-known/openpgpkey/hu/<localHash>`.
+        The local-part of the email is lowercased, SHA-1'd, and z-base-32 encoded
+        to produce `localHash`, per the WKD draft spec.
+      responses:
+        '200':
+          description: Binary OpenPGP transferable public key.
+          content:
+            application/octet-stream:
+              schema: { type: string, format: binary }
+        '404':
+          description: No key for this user.
+
+  /.well-known/openpgpkey/{domain}/hu/{localHash}:
+    parameters:
+      - $ref: '#/components/parameters/Domain'
+      - $ref: '#/components/parameters/LocalHash'
+    get:
+      tags: [wkd]
+      operationId: wkdAdvanced
+      summary: WKD advanced method (served from openpgpkey.<domain>).
+      description: |
+        Served from `https://openpgpkey.<domain>/.well-known/openpgpkey/<domain>/hu/<localHash>`.
+        The advanced method puts the keys under a dedicated host and includes the
+        domain in the path, allowing one keyserver to serve multiple email domains.
+      responses:
+        '200':
+          description: Binary OpenPGP transferable public key.
+          content:
+            application/octet-stream:
+              schema: { type: string, format: binary }
+        '404':
+          description: No key for this user.
+
+  /{user}.keys:
+    parameters:
+      - $ref: '#/components/parameters/User'
+    get:
+      tags: [github-style]
+      operationId: getSshKeys
+      summary: GitHub-style SSH authorized_keys lines. Consumed by Ansible authorized_key.
+      description: |
+        One `authorized_keys`-format line per active SSH key for the user.
+        Revoked or expired keys are omitted. Newline-separated. Returns an
+        empty body (200) when the user exists but has no SSH keys; 404 when
+        no such user exists.
+      responses:
+        '200':
+          description: Zero or more authorized_keys lines, newline-separated.
+          content:
+            text/plain:
+              schema: { type: string }
+              example: |
+                ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExample alice@laptop
+                ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAnother alice@yubikey
+        '404':
+          description: No such user.
+
+  /{user}.gpg:
+    parameters:
+      - $ref: '#/components/parameters/User'
+    get:
+      tags: [github-style]
+      operationId: getGpgArmored
+      summary: GitHub-style armored GPG public key.
+      description: |
+        ASCII-armored OpenPGP transferable public key for the user. If the user
+        has multiple GPG keys, the active set is concatenated.
+      responses:
+        '200':
+          description: ASCII-armored OpenPGP public key block(s).
+          content:
+            application/pgp-keys:
+              schema: { type: string }
+        '404':
+          description: No GPG key for this user.
+
+components:
+  parameters:
+    LocalHash:
+      in: path
+      name: localHash
+      required: true
+      description: z-base-32 encoded SHA-1 of the lowercased local-part of the user's email (per WKD).
+      schema: { type: string }
+    Domain:
+      in: path
+      name: domain
+      required: true
+      description: Email domain (used only by the WKD advanced method to disambiguate).
+      schema: { type: string, example: acme.tld }
+    User:
+      in: path
+      name: user
+      required: true
+      description: Local-part of the user's email under the host's domain.
+      schema: { type: string, example: alice }

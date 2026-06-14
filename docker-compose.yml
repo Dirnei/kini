@@ -1,0 +1,47 @@
+# Kini local stack.
+# Services: docs (nginx, OpenAPI viewers) + api (.NET 10 + React SPA) + mongo.
+
+services:
+  docs:
+    build:
+      context: .
+      dockerfile: docker/docs.Dockerfile
+    image: kini-docs:dev
+    container_name: kini-docs
+    ports:
+      - "8080:80"
+    restart: unless-stopped
+
+  api:
+    build:
+      context: .
+      dockerfile: docker/api.Dockerfile
+    image: kini-api:dev
+    container_name: kini-api
+    depends_on:
+      mongo:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      Mongo__ConnectionString: mongodb://mongo:27017
+      Mongo__Database: kini
+    ports:
+      - "5001:8080"
+    restart: unless-stopped
+
+  mongo:
+    image: mongo:8
+    container_name: kini-mongo
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  mongo-data:

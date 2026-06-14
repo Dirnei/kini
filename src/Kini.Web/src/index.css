@@ -1,0 +1,161 @@
+@import "tailwindcss";
+
+/* ----------------------------------------------------------------------
+ * Kini theme tokens
+ * Aesthetic: editorial-heraldic. Parchment, ink, oxblood, antique gold.
+ * -------------------------------------------------------------------- */
+@theme {
+  /* Typography */
+  --font-display: "Fraunces", "Iowan Old Style", "Apple Garamond", Georgia, serif;
+  --font-body: "Mona Sans", "Inter Tight", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "SFMono-Regular", Menlo, monospace;
+
+  /* Palette — warm and intentional. */
+  --color-parchment: #f4ecd8;
+  --color-parchment-deep: #ece2c8;
+  --color-ink: #14110d;
+  --color-ink-muted: #4a4338;
+  --color-muted: #8a7e6a;
+  --color-rule: #d6cdb8;
+  --color-oxblood: #6e1a25;
+  --color-oxblood-deep: #4a0f18;
+  --color-gold: #b08a3e;
+  --color-gold-deep: #8a6a2a;
+}
+
+/* Body defaults — set on body, not html, so Tailwind utilities still cascade. */
+body {
+  font-family: var(--font-body);
+  background: var(--color-parchment);
+  color: var(--color-ink);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: "ss01", "ss02", "kern", "liga";
+  font-variation-settings: "wdth" 100;
+  /* Subtle paper grain via two layered radial gradients. */
+  background-image:
+    radial-gradient(ellipse 80% 60% at 50% 0%, rgba(184, 146, 75, 0.08), transparent 60%),
+    radial-gradient(ellipse 60% 50% at 100% 100%, rgba(110, 26, 37, 0.06), transparent 70%);
+  background-attachment: fixed;
+}
+
+/* Selection — a translucent gold that reads on both parchment and ink.
+ * Don't override the text color, so contrast holds on either background. */
+::selection {
+  background: color-mix(in srgb, var(--color-gold) 55%, transparent);
+}
+
+/* Headings — Fraunces with optical-sized expression. */
+.font-display {
+  font-family: var(--font-display);
+  font-optical-sizing: auto;
+  font-variation-settings: "opsz" 144, "SOFT" 50, "WONK" 0;
+}
+
+/* Subtle horizontal rule that feels engraved. */
+.rule {
+  height: 1px;
+  background: linear-gradient(to right, transparent, var(--color-rule), transparent);
+}
+
+/* Entrance animation — a single staggered fade-up on first paint.
+ * The illusion is that the page composes itself like a letterpress run. */
+@keyframes reveal {
+  0% {
+    opacity: 0;
+    transform: translateY(12px);
+    filter: blur(2px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+}
+
+.reveal {
+  opacity: 0;
+  animation: reveal 0.9s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* A slower drift for the seal, applied separately. */
+@keyframes drift {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50% { transform: translateY(-6px) rotate(0.3deg); }
+}
+
+.drift {
+  animation: drift 12s ease-in-out infinite;
+}
+
+/* Drop cap for the editorial section. */
+.dropcap::first-letter {
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-style: italic;
+  float: left;
+  font-size: 4.4em;
+  line-height: 0.85;
+  padding-right: 0.08em;
+  padding-top: 0.05em;
+  color: var(--color-oxblood);
+}
+
+/* A monospaced eyebrow label, all-caps, fine-letter-spaced. */
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--color-ink-muted);
+}
+
+/* Buttons — flat, confident, never rounded into the void. */
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.85rem 1.5rem;
+  background: var(--color-ink);
+  color: var(--color-parchment);
+  font-family: var(--font-body);
+  font-weight: 500;
+  font-size: 0.95rem;
+  border-radius: 2px;
+  transition: transform 0.15s ease, background 0.15s ease;
+  border: 1px solid var(--color-ink);
+}
+.btn-primary:hover {
+  background: var(--color-oxblood);
+  border-color: var(--color-oxblood);
+  transform: translateY(-1px);
+}
+
+.btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.85rem 1.5rem;
+  background: transparent;
+  color: var(--color-ink);
+  font-family: var(--font-body);
+  font-weight: 500;
+  font-size: 0.95rem;
+  border: 1px solid var(--color-ink);
+  border-radius: 2px;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.btn-ghost:hover {
+  background: var(--color-ink);
+  color: var(--color-parchment);
+}
+
+/* Numbered step glyph. */
+.step-numeral {
+  font-family: var(--font-display);
+  font-weight: 300;
+  font-style: italic;
+  font-size: 3.5rem;
+  line-height: 1;
+  color: var(--color-oxblood);
+}

@@ -1,0 +1,44 @@
+# --- .NET build output ---------------------------------------------------
+bin/
+obj/
+out/
+publish/
+artifacts/
+
+# --- IDE / editor noise --------------------------------------------------
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+*.userprefs
+.history/
+
+# --- OpenAPI codegen ----------------------------------------------------
+src/**/Generated/
+**/*.g.cs
+
+# --- Web build / node ---------------------------------------------------
+**/node_modules/
+**/dist/
+.vite/
+src/Kini.Api/wwwroot/
+
+# --- Local config / secrets ---------------------------------------------
+appsettings.Local.json
+**/appsettings.local.json
+secrets/
+.env
+.env.local
+*.pfx
+*.key
+*.pem
+
+# --- OS noise ------------------------------------------------------------
+.DS_Store
+Thumbs.db
+
+# --- Logs / coverage -----------------------------------------------------
+*.log
+coverage/
+TestResults/

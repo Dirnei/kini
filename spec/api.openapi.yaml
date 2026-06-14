@@ -1,0 +1,618 @@
+openapi: 3.1.0
+info:
+  title: '<service> Management API'
+  version: 0.1.0
+  summary: Authenticated REST API for orgs, identities, keys, tokens, and audit.
+  description: |
+    Management API for <service>. Authenticated, served from a <service>-controlled
+    host (e.g., api.<service>.tld). Used by web UI, CLI, CI automation, and any
+    third-party integration (Ansible collection, Terraform provider, GitHub Action).
+
+    The OpenAPI spec is the source of truth. .NET 10 server stubs and clients
+    (TS/Go/Python) are generated from it.
+
+    For the public, unauthenticated key-publishing endpoints (WKD + `.keys` + `.gpg`)
+    served from per-customer domains, see `well-known.openapi.yaml`.
+  contact:
+    name: '<service> team'
+  license:
+    name: TBD
+
+servers:
+  - url: https://api.example.com
+    description: Hosted SaaS (placeholder)
+  - url: http://localhost:8080
+    description: Local dev
+
+tags:
+  - name: orgs
+    description: Organizations and domain claims.
+  - name: identities
+    description: People (org-bound or personal).
+  - name: keys
+    description: GPG and SSH public key lifecycle.
+  - name: tokens
+    description: API tokens for CLI / CI / automation.
+  - name: audit
+    description: Append-only audit log.
+
+security:
+  - bearerToken: []
+
+# ----------------------------------------------------------------------------
+# Paths
+# ----------------------------------------------------------------------------
+paths:
+  # --- Organizations ------------------------------------------------------
+  /v1/orgs:
+    post:
+      tags: [orgs]
+      operationId: createOrg
+      summary: Create an organization.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateOrgRequest' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Organization' }
+        default: { $ref: '#/components/responses/Error' }
+
+  /v1/orgs/{orgId}:
+    parameters:
+      - $ref: '#/components/parameters/OrgId'
+    get:
+      tags: [orgs]
+      operationId: getOrg
+      summary: Get an organization.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Organization' }
+        default: { $ref: '#/components/responses/Error' }
+
+  /v1/orgs/{orgId}/domains:
+    parameters:
+      - $ref: '#/components/parameters/OrgId'
+    get:
+      tags: [orgs]
+      operationId: listDomainClaims
+      summary: List domain claims for an org.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/DomainClaim' }
+        default: { $ref: '#/components/responses/Error' }
+    post:
+      tags: [orgs]
+      operationId: createDomainClaim
+      summary: Start a domain claim. Returns the DNS TXT challenge to publish.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateDomainClaimRequest' }
+      responses:
+        '201':
+          description: Claim created (pending verification)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DomainClaim' }
+        default: { $ref: '#/components/responses/Error' }
+
+  /v1/orgs/{orgId}/domains/{domain}/verify:
+    parameters:
+      - $ref: '#/components/parameters/OrgId'
+      - $ref: '#/components/parameters/Domain'
+    post:
+      tags: [orgs]
+      operationId: verifyDomainClaim
+      summary: Trigger DNS check for a pending domain claim.
+      responses:
+        '200':
+          description: Verification result
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DomainClaim' }
+        default: { $ref: '#/components/responses/Error' }
+
+  # --- Identities ---------------------------------------------------------
+  /v1/orgs/{orgId}/identities:
+    parameters:
+      - $ref: '#/components/parameters/OrgId'
+    get:
+      tags: [identities]
+      operationId: listIdentities
+      summary: List identities in an org.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Identity' }
+        default: { $ref: '#/components/responses/Error' }
+    post:
+      tags: [identities]
+      operationId: createIdentity
+      summary: Add an identity to an org.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateIdentityRequest' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Identity' }
+        default: { $ref: '#/components/responses/Error' }
+
+  /v1/identities/{email}/keys:
+    parameters:
+      - $ref: '#/components/parameters/Email'
+    get:
+      tags: [keys]
+      operationId: listKeysForIdentity
+      summary: List keys for an identity.
+      parameters:
+        - in: query
+          name: type
+          schema: { $ref: '#/components/schemas/KeyType' }
+        - in: query
+          name: includeRevoked
+          schema: { type: boolean, default: false }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Key' }
+        default: { $ref: '#/components/responses/Error' }
+    post:
+      tags: [keys]
+      operationId: uploadKey
+      summary: Upload a new public key for an identity.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UploadKeyRequest' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Key' }
+        default: { $ref: '#/components/responses/Error' }
+
+  # --- Keys ---------------------------------------------------------------
+  /v1/keys/{keyId}:
+    parameters:
+      - $ref: '#/components/parameters/KeyId'
+    get:
+      tags: [keys]
+      operationId: getKey
+      summary: Get a key by id.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Key' }
+        default: { $ref: '#/components/responses/Error' }
+    delete:
+      tags: [keys]
+      operationId: deleteKey
+      summary: Hard-delete a key (admin only; prefer revoke).
+      responses:
+        '204': { description: Deleted }
+        default: { $ref: '#/components/responses/Error' }
+
+  /v1/keys/{keyId}/revoke:
+    parameters:
+      - $ref: '#/components/parameters/KeyId'
+    post:
+      tags: [keys]
+      operationId: revokeKey
+      summary: Revoke a key. For GPG, publishes a revocation cert.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RevokeKeyRequest' }
+      responses:
+        '200':
+          description: Revoked
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Key' }
+        default: { $ref: '#/components/responses/Error' }
+
+  # --- API tokens ---------------------------------------------------------
+  /v1/api-tokens:
+    get:
+      tags: [tokens]
+      operationId: listApiTokens
+      summary: List API tokens for the caller's org.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/ApiToken' }
+        default: { $ref: '#/components/responses/Error' }
+    post:
+      tags: [tokens]
+      operationId: createApiToken
+      summary: Create an API token (returned ONCE in plaintext).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateApiTokenRequest' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CreateApiTokenResponse' }
+        default: { $ref: '#/components/responses/Error' }
+
+  /v1/api-tokens/{tokenId}:
+    parameters:
+      - in: path
+        name: tokenId
+        required: true
+        schema: { type: string }
+    delete:
+      tags: [tokens]
+      operationId: revokeApiToken
+      summary: Revoke an API token.
+      responses:
+        '204': { description: Revoked }
+        default: { $ref: '#/components/responses/Error' }
+
+  # --- Audit --------------------------------------------------------------
+  /v1/audit:
+    get:
+      tags: [audit]
+      operationId: listAuditEvents
+      summary: List audit events (scoped to caller's org).
+      parameters:
+        - in: query
+          name: since
+          schema: { type: string, format: date-time }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 500, default: 100 }
+        - in: query
+          name: cursor
+          schema: { type: string }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuditPage' }
+        default: { $ref: '#/components/responses/Error' }
+
+# ----------------------------------------------------------------------------
+# Components
+# ----------------------------------------------------------------------------
+components:
+  securitySchemes:
+    bearerToken:
+      type: http
+      scheme: bearer
+      description: API token (created via POST /v1/api-tokens) or session bearer from OAuth/OIDC login.
+    oidc:
+      type: openIdConnect
+      openIdConnectUrl: https://example.com/.well-known/openid-configuration
+
+  parameters:
+    OrgId:
+      in: path
+      name: orgId
+      required: true
+      schema: { type: string, format: uuid }
+    Email:
+      in: path
+      name: email
+      required: true
+      schema: { type: string, format: email }
+    Domain:
+      in: path
+      name: domain
+      required: true
+      schema: { type: string, example: acme.tld }
+    KeyId:
+      in: path
+      name: keyId
+      required: true
+      schema: { type: string, format: uuid }
+
+  responses:
+    Error:
+      description: Error response
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+  schemas:
+    # --- Primitives ------------------------------------------------------
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: string, example: domain_not_verified }
+        message: { type: string }
+        details:
+          type: object
+          additionalProperties: true
+
+    KeyType:
+      type: string
+      enum: [ssh, gpg]
+
+    Provenance:
+      type: string
+      description: |
+        How the key entered the directory:
+          - uploaded         pubkey pasted/POSTed by a user
+          - binary           generated by the official CLI (private key existed in software, claimed wiped)
+          - binary_hardware  generated and provisioned onto a hardware token by the official CLI
+          - binary_attested  on-device generation with verified attestation chain
+      enum: [uploaded, binary, binary_hardware, binary_attested]
+
+    DomainClaimStatus:
+      type: string
+      enum: [pending, verified, failed]
+
+    # --- Domain entities -------------------------------------------------
+    Organization:
+      type: object
+      required: [id, name, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        primaryDomain: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+
+    DomainClaim:
+      type: object
+      required: [orgId, domain, status, dnsTxtName, dnsTxtValue]
+      properties:
+        orgId: { type: string, format: uuid }
+        domain: { type: string }
+        status: { $ref: '#/components/schemas/DomainClaimStatus' }
+        dnsTxtName: { type: string, example: _service-verify.acme.tld }
+        dnsTxtValue: { type: string }
+        verifiedAt: { type: string, format: date-time, nullable: true }
+
+    Identity:
+      type: object
+      required: [id, email, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        orgId: { type: string, format: uuid, nullable: true }
+        email: { type: string, format: email }
+        displayName: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+        verifiedAt: { type: string, format: date-time, nullable: true }
+
+    # --- Key polymorphism ------------------------------------------------
+    # `Key` is a oneOf over `SshKey` and `GpgKey`, discriminated by the `type`
+    # field. Codegen produces a sealed/abstract base with two concrete types
+    # in C#, TypeScript, etc.
+    KeyBase:
+      type: object
+      required: [id, identityId, fingerprint, provenance, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        identityId: { type: string, format: uuid }
+        fingerprint:
+          type: string
+          description: Algorithm-specific fingerprint (SHA256 for SSH, OpenPGP V4/V5 fp for GPG).
+        provenance: { $ref: '#/components/schemas/Provenance' }
+        provenanceData:
+          type: object
+          description: Free-form structured evidence (attestation cert chain, CLI version, signing identity).
+          additionalProperties: true
+        expiresAt: { type: string, format: date-time, nullable: true }
+        revokedAt: { type: string, format: date-time, nullable: true }
+        revocationReason: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+
+    SshKey:
+      allOf:
+        - $ref: '#/components/schemas/KeyBase'
+        - type: object
+          required: [type, publicKey]
+          properties:
+            type:
+              type: string
+              enum: [ssh]
+            algorithm:
+              type: string
+              description: SSH key algorithm.
+              example: ssh-ed25519
+            publicKey:
+              type: string
+              description: A single `authorized_keys`-style line (with or without the trailing comment).
+              example: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExample alice@laptop
+            comment:
+              type: string
+              nullable: true
+              description: Optional trailing comment from the authorized_keys line.
+
+    GpgKey:
+      allOf:
+        - $ref: '#/components/schemas/KeyBase'
+        - type: object
+          required: [type, publicKey]
+          properties:
+            type:
+              type: string
+              enum: [gpg]
+            algorithm:
+              type: string
+              description: Primary key algorithm.
+              example: rsa4096
+            publicKey:
+              type: string
+              description: ASCII-armored OpenPGP transferable public key block.
+            uids:
+              type: array
+              description: RFC 4880 user IDs bound to this key.
+              items: { type: string }
+
+    Key:
+      oneOf:
+        - $ref: '#/components/schemas/SshKey'
+        - $ref: '#/components/schemas/GpgKey'
+      discriminator:
+        propertyName: type
+        mapping:
+          ssh: '#/components/schemas/SshKey'
+          gpg: '#/components/schemas/GpgKey'
+
+    # --- ApiToken / Audit -----------------------------------------------
+    ApiToken:
+      type: object
+      required: [id, name, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        scopes:
+          type: array
+          items: { type: string }
+        createdAt: { type: string, format: date-time }
+        lastUsedAt: { type: string, format: date-time, nullable: true }
+        revokedAt: { type: string, format: date-time, nullable: true }
+
+    AuditEvent:
+      type: object
+      required: [id, orgId, action, occurredAt]
+      properties:
+        id: { type: string, format: uuid }
+        orgId: { type: string, format: uuid }
+        actor:
+          type: object
+          properties:
+            type: { type: string, enum: [user, api-token, system] }
+            id: { type: string }
+        action: { type: string, example: key.uploaded }
+        target:
+          type: object
+          additionalProperties: true
+        occurredAt: { type: string, format: date-time }
+
+    AuditPage:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/AuditEvent' }
+        nextCursor: { type: string, nullable: true }
+
+    # --- Request bodies --------------------------------------------------
+    CreateOrgRequest:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        primaryDomain: { type: string, nullable: true }
+
+    CreateDomainClaimRequest:
+      type: object
+      required: [domain]
+      properties:
+        domain: { type: string, example: acme.tld }
+
+    CreateIdentityRequest:
+      type: object
+      required: [email]
+      properties:
+        email: { type: string, format: email }
+        displayName: { type: string, nullable: true }
+
+    # --- UploadKeyRequest polymorphism (matches Key) ---------------------
+    UploadKeyRequestBase:
+      type: object
+      properties:
+        provenance: { $ref: '#/components/schemas/Provenance' }
+        provenanceData:
+          type: object
+          additionalProperties: true
+        expiresAt: { type: string, format: date-time, nullable: true }
+
+    UploadSshKeyRequest:
+      allOf:
+        - $ref: '#/components/schemas/UploadKeyRequestBase'
+        - type: object
+          required: [type, publicKey]
+          properties:
+            type: { type: string, enum: [ssh] }
+            publicKey: { type: string }
+            comment: { type: string, nullable: true }
+
+    UploadGpgKeyRequest:
+      allOf:
+        - $ref: '#/components/schemas/UploadKeyRequestBase'
+        - type: object
+          required: [type, publicKey]
+          properties:
+            type: { type: string, enum: [gpg] }
+            publicKey: { type: string }
+
+    UploadKeyRequest:
+      oneOf:
+        - $ref: '#/components/schemas/UploadSshKeyRequest'
+        - $ref: '#/components/schemas/UploadGpgKeyRequest'
+      discriminator:
+        propertyName: type
+        mapping:
+          ssh: '#/components/schemas/UploadSshKeyRequest'
+          gpg: '#/components/schemas/UploadGpgKeyRequest'
+
+    RevokeKeyRequest:
+      type: object
+      properties:
+        reason: { type: string }
+
+    CreateApiTokenRequest:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        scopes:
+          type: array
+          items: { type: string }
+
+    CreateApiTokenResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiToken'
+        - type: object
+          required: [token]
+          properties:
+            token:
+              type: string
+              description: The plaintext token. Shown ONCE; never retrievable again.

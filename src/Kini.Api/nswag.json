@@ -1,0 +1,29 @@
+{
+  "runtime": "Net100",
+  "defaultVariables": null,
+  "documentGenerator": {
+    "fromDocument": {
+      "url": "../../spec/api.openapi.yaml",
+      "output": null,
+      "newLineBehavior": "Auto"
+    }
+  },
+  "codeGenerators": {
+    "openApiToCSharpClient": {
+      "generateClientClasses": false,
+      "generateClientInterfaces": false,
+      "generateDtoTypes": true,
+      "generateExceptionClasses": false,
+      "wrapResponses": false,
+      "namespace": "Kini.Api.Generated",
+      "output": "Generated/Contracts.g.cs",
+      "classStyle": "Record",
+      "generateNullableReferenceTypes": true,
+      "generateNativeRecords": true,
+      "dateType": "System.DateTimeOffset",
+      "dateTimeType": "System.DateTimeOffset",
+      "jsonLibrary": "SystemTextJson",
+      "useBaseUrl": false
+    }
+  }
+}
