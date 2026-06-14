@@ -1,0 +1,6 @@
+/kini
+*.exe
+*.test
+*.out
+.idea/
+.vscode/
