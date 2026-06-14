@@ -52,7 +52,7 @@ public static class CompleteWebAuthnRegistration
             IdentityId: session.IdentityId,
             CredentialId: credentialIdBase64,
             PublicKey: result.PublicKey,
-            Algorithm: 0,  // The COSE algorithm id lives inside PublicKey; decode lazily when needed.
+            Algorithm: CoseAlgorithm.Extract(result.PublicKey),
             Aaguid: result.AaGuid == Guid.Empty ? null : result.AaGuid,
             Nickname: string.IsNullOrWhiteSpace(request.Nickname) ? null : request.Nickname,
             SignCount: result.SignCount,
