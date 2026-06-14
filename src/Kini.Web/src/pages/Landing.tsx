@@ -60,8 +60,8 @@ function Hero() {
         </p>
 
         <div className="reveal mt-12 flex flex-wrap items-center gap-4" style={{ animationDelay: '400ms' }}>
-          <Link to="/sign-in" className="btn-primary">
-            Request access
+          <Link to="/sign-up" className="btn-primary">
+            Forge your seal
             <span aria-hidden>→</span>
           </Link>
           <Link to="/sign-in" className="btn-ghost">

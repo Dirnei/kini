@@ -19,6 +19,9 @@
     <!-- MongoDB -->
     <PackageReference Include="MongoDB.Driver" Version="3.2.0" />
 
+    <!-- WebAuthn / FIDO2 -->
+    <PackageReference Include="Fido2.AspNet" Version="4.0.1" />
+
     <!-- OpenAPI codegen (build-time). Uses the Net100-targeted NSwag exe so
          it runs on the same runtime the SDK image already provides. -->
     <PackageReference Include="NSwag.MSBuild" Version="14.7.1">

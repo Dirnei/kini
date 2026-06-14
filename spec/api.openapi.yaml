@@ -35,6 +35,12 @@ tags:
     description: API tokens for CLI / CI / automation.
   - name: audit
     description: Append-only audit log.
+  - name: auth
+    description: Authentication ceremonies (sign-in via SSH-key or WebAuthn, sign-out).
+  - name: credentials
+    description: SSH and WebAuthn credentials bound to an identity for login.
+  - name: registration
+    description: Bootstrap onboarding (sign-up).
 
 security:
   - bearerToken: []
@@ -313,6 +319,246 @@ paths:
               schema: { $ref: '#/components/schemas/AuditPage' }
         default: { $ref: '#/components/responses/Error' }
 
+  # --- Registration (anonymous bootstrap) --------------------------------
+  /v1/sign-up:
+    post:
+      tags: [registration]
+      operationId: signUp
+      summary: Bootstrap a new organization with its first identity and credential.
+      description: |
+        Atomic anonymous endpoint that creates an Organization, an Identity for
+        the bootstrap admin, registers an initial SshCredential, and returns a
+        bearer session token. The only unauthenticated way into the system.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SignUpRequest' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SignUpResponse' }
+        default: { $ref: '#/components/responses/Error' }
+
+  # --- SSH-key authentication --------------------------------------------
+  /v1/auth/ssh/challenge:
+    post:
+      tags: [auth]
+      operationId: requestSshChallenge
+      summary: Request a one-time nonce to sign with an SSH key.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SshChallengeRequest' }
+      responses:
+        '200':
+          description: Challenge issued.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SshChallengeResponse' }
+        default: { $ref: '#/components/responses/Error' }
+
+  /v1/auth/ssh/verify:
+    post:
+      tags: [auth]
+      operationId: verifySshSignature
+      summary: Verify an SSH signature for a previously issued challenge; mints a session.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SshVerifyRequest' }
+      responses:
+        '200':
+          description: Session minted.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SessionWithToken' }
+        '401':
+          description: Signature did not verify.
+        default: { $ref: '#/components/responses/Error' }
+
+  # --- WebAuthn authentication -------------------------------------------
+  /v1/auth/webauthn/begin:
+    post:
+      tags: [auth]
+      operationId: beginWebAuthnAssertion
+      summary: Start a WebAuthn assertion ceremony.
+      description: |
+        Returns PublicKeyCredentialRequestOptions in JSON form, plus an opaque
+        ceremonyId the client must echo back to /complete.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/WebAuthnAssertionBeginRequest' }
+      responses:
+        '200':
+          description: Assertion options issued.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WebAuthnOptions' }
+        default: { $ref: '#/components/responses/Error' }
+
+  /v1/auth/webauthn/complete:
+    post:
+      tags: [auth]
+      operationId: completeWebAuthnAssertion
+      summary: Submit the WebAuthn assertion and mint a session.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/WebAuthnAssertionCompleteRequest' }
+      responses:
+        '200':
+          description: Session minted.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SessionWithToken' }
+        '401':
+          description: Assertion did not verify.
+        default: { $ref: '#/components/responses/Error' }
+
+  # --- Credentials (auth-required) ---------------------------------------
+  /v1/auth/credentials/ssh:
+    get:
+      tags: [credentials]
+      operationId: listSshCredentials
+      summary: List the current identity's SSH credentials.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/SshCredential' }
+        default: { $ref: '#/components/responses/Error' }
+    post:
+      tags: [credentials]
+      operationId: registerSshCredential
+      summary: Register a new SSH public key as a login credential.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RegisterSshCredentialRequest' }
+      responses:
+        '201':
+          description: Credential registered.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SshCredential' }
+        default: { $ref: '#/components/responses/Error' }
+
+  /v1/auth/credentials/ssh/{credentialId}:
+    parameters:
+      - in: path
+        name: credentialId
+        required: true
+        schema: { type: string, format: uuid }
+    delete:
+      tags: [credentials]
+      operationId: revokeSshCredential
+      summary: Revoke an SSH credential.
+      responses:
+        '204': { description: Revoked }
+        default: { $ref: '#/components/responses/Error' }
+
+  /v1/auth/credentials/webauthn:
+    get:
+      tags: [credentials]
+      operationId: listWebAuthnCredentials
+      summary: List the current identity's WebAuthn credentials.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/WebAuthnCredential' }
+        default: { $ref: '#/components/responses/Error' }
+
+  /v1/auth/credentials/webauthn/begin-registration:
+    post:
+      tags: [credentials]
+      operationId: beginWebAuthnRegistration
+      summary: Start registering a new WebAuthn credential.
+      responses:
+        '200':
+          description: Registration options issued.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WebAuthnOptions' }
+        default: { $ref: '#/components/responses/Error' }
+
+  /v1/auth/credentials/webauthn/complete-registration:
+    post:
+      tags: [credentials]
+      operationId: completeWebAuthnRegistration
+      summary: Submit the attestation and store the new WebAuthn credential.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/WebAuthnRegistrationCompleteRequest' }
+      responses:
+        '201':
+          description: Credential registered.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WebAuthnCredential' }
+        default: { $ref: '#/components/responses/Error' }
+
+  /v1/auth/credentials/webauthn/{credentialId}:
+    parameters:
+      - in: path
+        name: credentialId
+        required: true
+        schema: { type: string, format: uuid }
+    delete:
+      tags: [credentials]
+      operationId: revokeWebAuthnCredential
+      summary: Revoke a WebAuthn credential.
+      responses:
+        '204': { description: Revoked }
+        default: { $ref: '#/components/responses/Error' }
+
+  # --- Current session ---------------------------------------------------
+  /v1/auth/me:
+    get:
+      tags: [auth]
+      operationId: getCurrentSession
+      summary: Return the current identity, organization, and session.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MeResponse' }
+        '401':
+          description: Not authenticated.
+        default: { $ref: '#/components/responses/Error' }
+
+  /v1/auth/sign-out:
+    post:
+      tags: [auth]
+      operationId: signOut
+      summary: Revoke the current session.
+      responses:
+        '204': { description: Signed out }
+        default: { $ref: '#/components/responses/Error' }
+
 # ----------------------------------------------------------------------------
 # Components
 # ----------------------------------------------------------------------------
@@ -408,10 +654,17 @@ components:
 
     Identity:
       type: object
-      required: [id, email, createdAt]
+      required: [id, username, email, createdAt]
       properties:
         id: { type: string, format: uuid }
         orgId: { type: string, format: uuid, nullable: true }
+        username:
+          type: string
+          description: |
+            Globally unique public handle, lowercase alphanumeric + hyphen, 2-32 chars.
+            Appears in URLs like `/{username}.keys`. Distinct from `email`, which WKD
+            requires and which can't be repurposed.
+          example: dirnei
         email: { type: string, format: email }
         displayName: { type: string, nullable: true }
         createdAt: { type: string, format: date-time }
@@ -616,3 +869,201 @@ components:
             token:
               type: string
               description: The plaintext token. Shown ONCE; never retrievable again.
+
+    # --- Sessions --------------------------------------------------------
+    Session:
+      type: object
+      required: [id, identityId, orgId, createdAt, expiresAt]
+      properties:
+        id: { type: string, format: uuid }
+        identityId: { type: string, format: uuid }
+        orgId: { type: string, format: uuid }
+        createdAt: { type: string, format: date-time }
+        expiresAt: { type: string, format: date-time }
+        revokedAt: { type: string, format: date-time, nullable: true }
+
+    SessionWithToken:
+      allOf:
+        - $ref: '#/components/schemas/Session'
+        - type: object
+          required: [token]
+          properties:
+            token:
+              type: string
+              description: |
+                Plaintext bearer token. Shown ONCE; never retrievable again.
+                Attach to subsequent requests as `Authorization: Bearer <token>`.
+
+    MeResponse:
+      type: object
+      required: [identity, organization, session]
+      properties:
+        identity: { $ref: '#/components/schemas/Identity' }
+        organization: { $ref: '#/components/schemas/Organization' }
+        session: { $ref: '#/components/schemas/Session' }
+
+    # --- Credentials -----------------------------------------------------
+    SshCredential:
+      type: object
+      required: [id, identityId, publicKey, fingerprint, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        identityId: { type: string, format: uuid }
+        publicKey:
+          type: string
+          description: Single authorized_keys-format line.
+        fingerprint:
+          type: string
+          description: SHA256 fingerprint, prefixed with "SHA256:".
+        algorithm:
+          type: string
+          example: ssh-ed25519
+        comment:
+          type: string
+          nullable: true
+        createdAt: { type: string, format: date-time }
+        lastUsedAt: { type: string, format: date-time, nullable: true }
+        revokedAt: { type: string, format: date-time, nullable: true }
+
+    RegisterSshCredentialRequest:
+      type: object
+      required: [publicKey]
+      properties:
+        publicKey: { type: string }
+
+    WebAuthnCredential:
+      type: object
+      required: [id, identityId, credentialId, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        identityId: { type: string, format: uuid }
+        credentialId:
+          type: string
+          description: WebAuthn Credential ID (base64url-encoded).
+        algorithm:
+          type: integer
+          description: COSE algorithm identifier.
+        aaguid:
+          type: string
+          format: uuid
+          nullable: true
+        nickname:
+          type: string
+          nullable: true
+          description: Optional human label (e.g., "Work YubiKey").
+        signCount:
+          type: integer
+          format: int64
+        createdAt: { type: string, format: date-time }
+        lastUsedAt: { type: string, format: date-time, nullable: true }
+        revokedAt: { type: string, format: date-time, nullable: true }
+
+    # --- Sign-up + auth requests ----------------------------------------
+    SignUpRequest:
+      type: object
+      required: [organizationName, username, email, sshPublicKey]
+      properties:
+        organizationName: { type: string }
+        primaryDomain: { type: string, nullable: true }
+        username:
+          type: string
+          description: |
+            Globally unique public handle (e.g. `dirnei`). Becomes the URL slug for
+            `/{username}.keys` and `/{username}.gpg`. Lowercase alphanumeric + hyphen,
+            2-32 characters; reserved system identifiers are rejected.
+          example: dirnei
+        email: { type: string, format: email }
+        displayName: { type: string, nullable: true }
+        sshPublicKey:
+          type: string
+          description: |
+            authorized_keys-style line. Becomes the initial SshCredential for
+            the bootstrap identity and is used for subsequent SSH-key sign-ins.
+        publishKey:
+          type: boolean
+          default: true
+          description: |
+            When true (default), the SSH key is also published to the directory
+            so it resolves at `/{username}.keys`. Set false to keep it private
+            to authentication only.
+
+    SignUpResponse:
+      type: object
+      required: [organization, identity, sshCredential, session]
+      properties:
+        organization: { $ref: '#/components/schemas/Organization' }
+        identity: { $ref: '#/components/schemas/Identity' }
+        sshCredential: { $ref: '#/components/schemas/SshCredential' }
+        session: { $ref: '#/components/schemas/SessionWithToken' }
+
+    SshChallengeRequest:
+      type: object
+      required: [email]
+      properties:
+        email: { type: string, format: email }
+
+    SshChallengeResponse:
+      type: object
+      required: [nonce, expiresAt, namespace]
+      properties:
+        nonce:
+          type: string
+          description: Opaque random string the client must sign via `ssh-keygen -Y sign`.
+        namespace:
+          type: string
+          example: kini
+        expiresAt: { type: string, format: date-time }
+
+    SshVerifyRequest:
+      type: object
+      required: [email, nonce, signature]
+      properties:
+        email: { type: string, format: email }
+        nonce: { type: string }
+        signature:
+          type: string
+          description: ASCII-armored SSH signature (BEGIN/END SSH SIGNATURE block).
+
+    # --- WebAuthn passthrough -------------------------------------------
+    # WebAuthn payloads are W3C-spec'd binary blobs encoded as JSON by the
+    # browser API. We pass them through opaquely; the server-side library
+    # (Fido2NetLib) parses them.
+    WebAuthnAssertionBeginRequest:
+      type: object
+      required: [email]
+      properties:
+        email: { type: string, format: email }
+
+    WebAuthnAssertionCompleteRequest:
+      type: object
+      required: [ceremonyId, assertion]
+      properties:
+        ceremonyId: { type: string }
+        assertion:
+          type: object
+          additionalProperties: true
+
+    WebAuthnRegistrationCompleteRequest:
+      type: object
+      required: [ceremonyId, attestation]
+      properties:
+        ceremonyId: { type: string }
+        nickname:
+          type: string
+          nullable: true
+        attestation:
+          type: object
+          additionalProperties: true
+
+    WebAuthnOptions:
+      type: object
+      description: |
+        Opaque JSON document containing either PublicKeyCredentialCreationOptions
+        (registration) or PublicKeyCredentialRequestOptions (assertion), plus a
+        ceremonyId the server uses to correlate the second leg.
+      required: [ceremonyId, options]
+      properties:
+        ceremonyId: { type: string }
+        options:
+          type: object
+          additionalProperties: true
