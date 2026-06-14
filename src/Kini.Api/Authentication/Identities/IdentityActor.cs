@@ -4,7 +4,7 @@ using MongoDB.Driver;
 
 namespace Kini.Api.Authentication.Identities;
 
-public sealed record CreateIdentityCommand(Guid OrgId, string Username, string Email, string? DisplayName);
+public sealed record CreateIdentityCommand(Guid OrgId, string Username, string Email, string Role, string? DisplayName);
 
 public sealed record IdentityResult(Identity? Identity, string? ErrorCode);
 
@@ -28,6 +28,7 @@ public sealed class IdentityActor : ReceiveActor
                 OrgId: cmd.OrgId,
                 Username: cmd.Username,
                 Email: cmd.Email.Trim().ToLowerInvariant(),
+                Role: cmd.Role,
                 DisplayName: cmd.DisplayName,
                 CreatedAt: DateTimeOffset.UtcNow,
                 VerifiedAt: null);

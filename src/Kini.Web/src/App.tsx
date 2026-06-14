@@ -5,6 +5,8 @@ import { SignUp } from './pages/SignUp'
 import { AppShell } from './components/AppShell'
 import { Dashboard } from './pages/Dashboard'
 import { Keys } from './pages/Keys'
+import { Identities } from './pages/Identities'
+import { Tokens } from './pages/Tokens'
 
 export function App() {
   return (
@@ -15,7 +17,9 @@ export function App() {
 
       <Route path="/app" element={<AppShell />}>
         <Route index element={<Dashboard />} />
+        <Route path="identities" element={<Identities />} />
         <Route path="keys" element={<Keys />} />
+        <Route path="tokens" element={<Tokens />} />
       </Route>
     </Routes>
   )

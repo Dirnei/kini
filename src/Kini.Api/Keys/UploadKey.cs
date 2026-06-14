@@ -1,3 +1,4 @@
+using Kini.Api.Audit;
 using Kini.Api.Authentication.Credentials;
 using Kini.Api.Authentication.Identities;
 using Kini.Api.Authentication.Sessions;
@@ -19,17 +20,22 @@ public static class UploadKey
         HttpContext http,
         IdentitiesCollection identities,
         KeysCollection keys,
+        AuditLog audit,
         CancellationToken ct)
     {
         var session = http.GetSession();
 
-        // Auth: the caller must be uploading for an identity in their own org.
-        // (Phase 2: also allow admins to upload on behalf of org-mates.)
-        var identity = await identities.FindByEmail(email.Trim().ToLowerInvariant(), ct);
-        if (identity is null || identity.OrgId != session.OrgId)
+        var target = await identities.FindByEmail(email.Trim().ToLowerInvariant(), ct);
+        if (target is null || target.OrgId != session.OrgId)
             return Results.NotFound();
-        if (identity.Id != session.IdentityId)
-            return Results.Forbid();
+
+        // Self-upload is always allowed. Cross-identity upload requires Owner.
+        if (target.Id != session.IdentityId)
+        {
+            var caller = await identities.FindById(session.IdentityId, ct);
+            if (caller is null || caller.Role != IdentityRole.Owner)
+                return Results.Forbid();
+        }
 
         if (string.Equals(request.Type, "gpg", StringComparison.OrdinalIgnoreCase))
         {
@@ -52,8 +58,8 @@ public static class UploadKey
 
         var key = new Key(
             Id: Guid.NewGuid(),
-            IdentityId: identity.Id,
-            OrgId: identity.OrgId,
+            IdentityId: target.Id,
+            OrgId: target.OrgId,
             Type: "ssh",
             Fingerprint: parsed.Fingerprint,
             Algorithm: parsed.Algorithm,
@@ -74,6 +80,15 @@ public static class UploadKey
         {
             return Results.Conflict(new { code = "already_published", message = "You've already published this key." });
         }
+
+        await audit.Record(http, AuditAction.KeyPublished,
+            new AuditTarget("key", key.Id, key.Fingerprint),
+            new Dictionary<string, string>
+            {
+                ["targetIdentityId"] = target.Id.ToString(),
+                ["targetEmail"] = target.Email,
+                ["algorithm"] = parsed.Algorithm,
+            }, ct);
 
         return Results.Created($"/v1/keys/{key.Id}", key);
     }

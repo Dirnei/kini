@@ -7,6 +7,7 @@ export type MeData = {
     id: string
     username: string
     email: string
+    role: 'owner' | 'member'
     displayName: string | null
     orgId: string
   }

@@ -4,12 +4,12 @@ import { Avatar } from './Avatar'
 import { useSignOut, type MeData } from '../lib/auth'
 
 const NAV_ITEMS: ReadonlyArray<{ to: string; label: string; end?: boolean; soon?: boolean }> = [
-  { to: '/app',      label: 'Console', end: true },
-  { to: '/app/keys', label: 'Keys' },
-  { to: '#', label: 'Identities', soon: true },
-  { to: '#', label: 'Domains',    soon: true },
-  { to: '#', label: 'Tokens',     soon: true },
-  { to: '#', label: 'Audit',      soon: true },
+  { to: '/app',            label: 'Console', end: true },
+  { to: '/app/identities', label: 'Identities' },
+  { to: '/app/keys',       label: 'Keys' },
+  { to: '/app/tokens',     label: 'Tokens' },
+  { to: '#', label: 'Domains', soon: true },
+  { to: '#', label: 'Audit',   soon: true },
 ]
 
 const activeCls = 'text-[var(--color-ink)] underline underline-offset-8 decoration-[var(--color-oxblood)] decoration-2'

@@ -1,7 +1,9 @@
+using Kini.Api.Audit;
 using Kini.Api.Authentication.Challenges;
 using Kini.Api.Authentication.Credentials;
 using Kini.Api.Authentication.Identities;
 using Kini.Api.Authentication.Sessions;
+using Kini.Api.Keys;
 using MongoDB.Driver;
 
 namespace Kini.Api.Authentication.SignIn;
@@ -14,9 +16,11 @@ public static class VerifySshChallenge
         Request request,
         IdentitiesCollection identities,
         SshCredentialsCollection credentials,
+        KeysCollection publishedKeys,
         ChallengeStore challenges,
         SshSignatureVerifier verifier,
         IssueSession sessions,
+        AuditLog audit,
         CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(request.Email) ||
@@ -55,8 +59,44 @@ public static class VerifySshChallenge
             }
         }
 
+        // 3b. Lazy-claim fallback: if no SshCredential matched, the user may
+        //     still be signing in with one of their PUBLISHED keys — that's
+        //     how "an admin uploaded a key for me but I never registered"
+        //     turns into a real session. On success, persist the published
+        //     key as a credential so future sign-ins are direct.
         if (matched is null)
+        {
+            var pubs = await publishedKeys.ActiveForIdentity(identity.Id, type: "ssh", ct);
+            foreach (var pub in pubs)
+            {
+                if (await verifier.Verify(request.Nonce, request.Signature, identity.Email, pub.PublicKey, ct))
+                {
+                    var lazyCred = new SshCredential(
+                        Id: Guid.NewGuid(),
+                        IdentityId: identity.Id,
+                        PublicKey: pub.PublicKey,
+                        Fingerprint: pub.Fingerprint,
+                        Algorithm: pub.Algorithm,
+                        Comment: pub.Comment,
+                        CreatedAt: DateTimeOffset.UtcNow,
+                        LastUsedAt: DateTimeOffset.UtcNow,
+                        RevokedAt: null);
+                    await credentials.Collection.InsertOneAsync(lazyCred, cancellationToken: ct);
+                    matched = lazyCred;
+                    break;
+                }
+            }
+        }
+
+        if (matched is null)
+        {
+            await audit.RecordAs(identity.OrgId,
+                new AuditActor("user", identity.Id, identity.Email),
+                AuditAction.SignInFailed,
+                new AuditTarget("identity", identity.Id, identity.Email),
+                new Dictionary<string, string> { ["method"] = "ssh" }, ct);
             return Results.Unauthorized();
+        }
 
         // 4. Mint a session, mark the credential as recently used.
         var (session, plaintext) = await sessions.ForIdentity(identity, ct);
@@ -64,6 +104,12 @@ public static class VerifySshChallenge
             c => c.Id == matched.Id,
             Builders<SshCredential>.Update.Set(c => c.LastUsedAt, DateTimeOffset.UtcNow),
             cancellationToken: ct);
+
+        await audit.RecordAs(identity.OrgId,
+            new AuditActor("user", identity.Id, identity.Email),
+            AuditAction.SignInSucceeded,
+            new AuditTarget("identity", identity.Id, identity.Email),
+            new Dictionary<string, string> { ["method"] = "ssh", ["fingerprint"] = matched.Fingerprint }, ct);
 
         return Results.Ok(new
         {

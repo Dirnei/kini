@@ -1,9 +1,11 @@
+using Kini.Api.Audit;
 using Kini.Api.Authentication.Credentials;
 using Kini.Api.Authentication.Identities;
 using Kini.Api.Authentication.Sessions;
 using Kini.Api.Keys;
 using Kini.Api.Organizations;
 using MongoDB.Driver;
+using IdentityRole = Kini.Api.Authentication.Identities.IdentityRole;
 
 namespace Kini.Api.Authentication.Registration;
 
@@ -24,10 +26,12 @@ public static class SignUp
     /// </summary>
     public static async Task<IResult> Handle(
         Request request,
+        HttpContext http,
         OrganizationsCollection orgs,
         IdentitiesCollection identities,
         SshCredentialsCollection sshCreds,
         KeysCollection keys,
+        AuditLog audit,
         IssueSession issueSession,
         CancellationToken ct)
     {
@@ -67,6 +71,7 @@ public static class SignUp
             OrgId: org.Id,
             Username: username,
             Email: emailLower,
+            Role: IdentityRole.Owner,           // bootstrap user is the Owner
             DisplayName: request.DisplayName,
             CreatedAt: DateTimeOffset.UtcNow,
             VerifiedAt: DateTimeOffset.UtcNow); // self-verified by holding the SSH key
@@ -120,6 +125,19 @@ public static class SignUp
         }
 
         var (session, plaintext) = await issueSession.ForIdentity(identity, ct);
+
+        // Audit trail: org created → identity created → key published (if any).
+        // Stamped against the brand-new identity since they ARE the actor.
+        var actor = new AuditActor("user", identity.Id, identity.Email);
+        await audit.RecordAs(org.Id, actor, AuditAction.OrgCreated,
+            new AuditTarget("org", org.Id, org.Name), ct: ct);
+        await audit.RecordAs(org.Id, actor, AuditAction.IdentityCreated,
+            new AuditTarget("identity", identity.Id, identity.Username), ct: ct);
+        if (publishedKey is not null)
+        {
+            await audit.RecordAs(org.Id, actor, AuditAction.KeyPublished,
+                new AuditTarget("key", publishedKey.Id, publishedKey.Fingerprint), ct: ct);
+        }
 
         return Results.Created($"/v1/orgs/{org.Id}", new
         {

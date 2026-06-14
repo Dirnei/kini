@@ -43,4 +43,17 @@ public static class IdentitiesBackfill
             }
         }
     }
+
+    /// <summary>
+    /// Pre-role identities get <see cref="IdentityRole.Owner"/> — they pre-date
+    /// the role system and they ARE the org's bootstrap user.
+    /// </summary>
+    public static Task BackfillRoles(IMongoDatabase db, CancellationToken ct = default)
+    {
+        var coll = db.GetCollection<BsonDocument>("identities");
+        return coll.UpdateManyAsync(
+            Builders<BsonDocument>.Filter.Exists("role", false),
+            Builders<BsonDocument>.Update.Set("role", "owner"),
+            cancellationToken: ct);
+    }
 }

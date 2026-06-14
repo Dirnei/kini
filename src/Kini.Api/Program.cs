@@ -1,5 +1,7 @@
 using Akka.Hosting;
 using Fido2NetLib;
+using Kini.Api.ApiTokens;
+using Kini.Api.Audit;
 using Kini.Api.Authentication.Challenges;
 using Kini.Api.Authentication.Credentials;
 using Kini.Api.Authentication.Identities;
@@ -42,6 +44,9 @@ builder.Services.AddSingleton<ChallengesCollection>();
 builder.Services.AddSingleton<SshCredentialsCollection>();
 builder.Services.AddSingleton<WebAuthnCredentialsCollection>();
 builder.Services.AddSingleton<KeysCollection>();
+builder.Services.AddSingleton<ApiTokensCollection>();
+builder.Services.AddSingleton<AuditCollection>();
+builder.Services.AddSingleton<AuditLog>();
 
 // --- Authentication helpers --------------------------------------------
 builder.Services.AddSingleton<IssueSession>();
@@ -81,8 +86,11 @@ using (var scope = app.Services.CreateScope())
 using (var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30)))
 {
     // Backfill missing fields BEFORE EnsureIndexes — the new unique index on
-    // username would otherwise fail on legacy docs.
-    await IdentitiesBackfill.BackfillUsernames(scope.ServiceProvider.GetRequiredService<IMongoDatabase>(), cts.Token);
+    // username would otherwise fail on legacy docs. Role backfill is also here
+    // for the same reason (record deserialization needs Role to be present).
+    var db = scope.ServiceProvider.GetRequiredService<IMongoDatabase>();
+    await IdentitiesBackfill.BackfillUsernames(db, cts.Token);
+    await IdentitiesBackfill.BackfillRoles(db, cts.Token);
 
     await scope.ServiceProvider.GetRequiredService<OrganizationsCollection>().EnsureIndexes(cts.Token);
     await scope.ServiceProvider.GetRequiredService<IdentitiesCollection>().EnsureIndexes(cts.Token);
@@ -91,6 +99,8 @@ using (var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30)))
     await scope.ServiceProvider.GetRequiredService<SshCredentialsCollection>().EnsureIndexes(cts.Token);
     await scope.ServiceProvider.GetRequiredService<WebAuthnCredentialsCollection>().EnsureIndexes(cts.Token);
     await scope.ServiceProvider.GetRequiredService<KeysCollection>().EnsureIndexes(cts.Token);
+    await scope.ServiceProvider.GetRequiredService<ApiTokensCollection>().EnsureIndexes(cts.Token);
+    await scope.ServiceProvider.GetRequiredService<AuditCollection>().EnsureIndexes(cts.Token);
 }
 
 // --- HTTP pipeline ------------------------------------------------------
@@ -111,6 +121,8 @@ app.MapSessionsEndpoints();
 app.MapRegistrationEndpoints();
 app.MapKeysEndpoints();
 app.MapWellKnownEndpoints();
+app.MapApiTokensEndpoints();
+app.MapAuditEndpoints();
 
 // SPA fallback (catches anything not matched above; serves index.html for client-side routing)
 app.MapFallbackToFile("index.html");

@@ -1,4 +1,6 @@
+using Kini.Api.ApiTokens;
 using Microsoft.Extensions.Primitives;
+using MongoDB.Driver;
 
 namespace Kini.Api.Authentication.Sessions;
 
@@ -13,7 +15,7 @@ public sealed class BearerAuthMiddleware
         _next = next;
     }
 
-    public async Task InvokeAsync(HttpContext context, SessionsCollection sessions)
+    public async Task InvokeAsync(HttpContext context, SessionsCollection sessions, ApiTokensCollection apiTokens)
     {
         if (context.Request.Headers.TryGetValue("Authorization", out StringValues auth) &&
             auth.Count > 0 &&
@@ -23,13 +25,39 @@ public sealed class BearerAuthMiddleware
             if (token.Length > 0)
             {
                 var hash = TokenGenerator.HashOf(token);
-                var session = await sessions.FindByTokenHash(hash, context.RequestAborted);
 
+                // Try interactive sessions first (the common case from the web UI).
+                var session = await sessions.FindByTokenHash(hash, context.RequestAborted);
                 if (session is not null &&
                     session.RevokedAt is null &&
                     session.ExpiresAt > DateTimeOffset.UtcNow)
                 {
                     context.Items[SessionItemKey] = session;
+                }
+                else
+                {
+                    // Fall back to API tokens — same Authorization: Bearer shape, different
+                    // collection. Looks like a session to downstream code (so RequireSession
+                    // / GetSession just work), but identity-stamped from the ApiToken.
+                    var apiToken = await apiTokens.FindByTokenHash(hash, context.RequestAborted);
+                    if (apiToken is not null && apiToken.RevokedAt is null)
+                    {
+                        var pseudoSession = new Session(
+                            Id: apiToken.Id,                 // not a real session id; identifies the token
+                            IdentityId: apiToken.IdentityId,
+                            OrgId: apiToken.OrgId,
+                            TokenHash: apiToken.TokenHash,
+                            CreatedAt: apiToken.CreatedAt,
+                            ExpiresAt: DateTimeOffset.MaxValue,
+                            RevokedAt: null);
+                        context.Items[SessionItemKey] = pseudoSession;
+
+                        // Touch lastUsedAt; fire-and-forget.
+                        _ = apiTokens.Collection.UpdateOneAsync(
+                            t => t.Id == apiToken.Id,
+                            Builders<ApiToken>.Update.Set(t => t.LastUsedAt, DateTimeOffset.UtcNow),
+                            cancellationToken: context.RequestAborted);
+                    }
                 }
             }
         }
