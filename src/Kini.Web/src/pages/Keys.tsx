@@ -75,16 +75,30 @@ function UploadForm({ email }: { email: string }) {
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
 
+  // Auto-detect SSH vs GPG by inspecting the first line. The server enforces
+  // the same rule; we spare it a round-trip on obvious mistakes.
+  const detectedType: 'ssh' | 'gpg' | null = (() => {
+    const t = pubkey.trim()
+    if (!t) return null
+    if (t.startsWith('-----BEGIN PGP PUBLIC KEY BLOCK')) return 'gpg'
+    if (t.startsWith('ssh-') || t.startsWith('ecdsa-') || t.startsWith('sk-')) return 'ssh'
+    return null
+  })()
+
   async function submit(e: FormEvent) {
     e.preventDefault()
     setError(null)
     setSuccess(false)
+    if (!detectedType) {
+      setError('Paste either an authorized_keys-style SSH line or an ASCII-armored OpenPGP block.')
+      return
+    }
     setSubmitting(true)
     try {
       const res = await fetch(`/v1/identities/${encodeURIComponent(email)}/keys`, {
         method: 'POST',
         headers: { 'content-type': 'application/json', Authorization: `Bearer ${getToken()}` },
-        body: JSON.stringify({ type: 'ssh', publicKey: pubkey.trim() }),
+        body: JSON.stringify({ type: detectedType, publicKey: pubkey.trim() }),
       })
       const body = await res.json().catch(() => ({}))
       if (!res.ok) {
@@ -104,22 +118,29 @@ function UploadForm({ email }: { email: string }) {
     <form onSubmit={submit} className="reveal mt-10 border border-[var(--color-rule)] rounded-sm p-8 bg-[var(--color-parchment-deep)]" style={{ animationDelay: '300ms' }}>
       <p className="eyebrow">Publish</p>
       <h2 className="font-display text-2xl md:text-3xl mt-2" style={{ fontVariationSettings: '"opsz" 48' }}>
-        Add an SSH key.
+        Add a key.
       </h2>
       <p className="mt-2 text-sm text-[var(--color-ink-muted)] max-w-2xl">
-        Paste one <code className="font-mono text-xs text-[var(--color-ink)]">authorized_keys</code>-format line.
-        The fingerprint is derived server-side; duplicates are rejected.
+        SSH (single <code className="font-mono text-xs text-[var(--color-ink)]">authorized_keys</code> line) or GPG
+        (<code className="font-mono text-xs text-[var(--color-ink)]">-----BEGIN PGP PUBLIC KEY BLOCK-----</code>).
+        Type is detected from the first line; the server validates and extracts the fingerprint.
       </p>
 
-      <textarea required rows={4} value={pubkey} onChange={(e) => setPubkey(e.target.value)}
-        placeholder="ssh-ed25519 AAAAC3Nz...  alice@laptop"
+      <textarea required rows={6} value={pubkey} onChange={(e) => setPubkey(e.target.value)}
+        placeholder={'ssh-ed25519 AAAAC3Nz...  alice@laptop\n— or —\n-----BEGIN PGP PUBLIC KEY BLOCK-----\nmQGN...'}
         className="mt-5 w-full px-4 py-3 bg-[var(--color-parchment)] border border-[var(--color-rule)] rounded-sm font-mono text-xs leading-relaxed focus:outline-none focus:border-[var(--color-ink)] transition-colors" />
+
+      {detectedType && (
+        <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--color-oxblood)]">
+          detected: {detectedType}
+        </p>
+      )}
 
       {error && <div className="mt-4 text-xs text-[var(--color-oxblood-deep)]">{error}</div>}
       {success && <div className="mt-4 text-xs text-[var(--color-gold-deep)]">✓ Published. Resolves at the URL above.</div>}
 
       <div className="mt-5 flex justify-end">
-        <button type="submit" disabled={submitting || pubkey.trim().length < 20} className="btn-primary disabled:opacity-40">
+        <button type="submit" disabled={submitting || pubkey.trim().length < 20 || !detectedType} className="btn-primary disabled:opacity-40">
           {submitting ? 'Publishing…' : <>Publish key <span aria-hidden>→</span></>}
         </button>
       </div>

@@ -37,40 +37,67 @@ public static class UploadKey
                 return Results.Forbid();
         }
 
-        if (string.Equals(request.Type, "gpg", StringComparison.OrdinalIgnoreCase))
-        {
-            return Results.StatusCode(StatusCodes.Status501NotImplemented);
-        }
-
-        if (!string.Equals(request.Type, "ssh", StringComparison.OrdinalIgnoreCase))
+        var isGpg = string.Equals(request.Type, "gpg", StringComparison.OrdinalIgnoreCase);
+        var isSsh = string.Equals(request.Type, "ssh", StringComparison.OrdinalIgnoreCase);
+        if (!isGpg && !isSsh)
             return Results.BadRequest(new { code = "invalid_type", message = "type must be 'ssh' or 'gpg'." });
-
-        SshPublicKey parsed;
-        try { parsed = SshPublicKey.Parse(request.PublicKey); }
-        catch (FormatException fx)
-        {
-            return Results.BadRequest(new { code = "invalid_public_key", message = fx.Message });
-        }
 
         var provenance = request.Provenance ?? "uploaded";
         if (provenance is not ("uploaded" or "binary" or "binary_hardware" or "binary_attested"))
             return Results.BadRequest(new { code = "invalid_provenance" });
 
-        var key = new Key(
-            Id: Guid.NewGuid(),
-            IdentityId: target.Id,
-            OrgId: target.OrgId,
-            Type: "ssh",
-            Fingerprint: parsed.Fingerprint,
-            Algorithm: parsed.Algorithm,
-            PublicKey: parsed.Canonical,
-            Comment: parsed.Comment,
-            Uids: null,
-            Provenance: provenance,
-            CreatedAt: DateTimeOffset.UtcNow,
-            ExpiresAt: request.ExpiresAt,
-            RevokedAt: null,
-            RevocationReason: null);
+        Key key;
+        string algorithm;
+        if (isGpg)
+        {
+            GpgPublicKey gpg;
+            try { gpg = await GpgPublicKey.ParseAsync(request.PublicKey, ct); }
+            catch (FormatException fx)
+            {
+                return Results.BadRequest(new { code = "invalid_public_key", message = fx.Message });
+            }
+            key = new Key(
+                Id: Guid.NewGuid(),
+                IdentityId: target.Id,
+                OrgId: target.OrgId,
+                Type: "gpg",
+                Fingerprint: gpg.Fingerprint,
+                Algorithm: gpg.Algorithm,
+                PublicKey: gpg.Armored,
+                Comment: null,
+                Uids: gpg.Uids,
+                Provenance: provenance,
+                CreatedAt: DateTimeOffset.UtcNow,
+                ExpiresAt: request.ExpiresAt,
+                RevokedAt: null,
+                RevocationReason: null);
+            algorithm = gpg.Algorithm;
+        }
+        else
+        {
+            SshPublicKey parsed;
+            try { parsed = SshPublicKey.Parse(request.PublicKey); }
+            catch (FormatException fx)
+            {
+                return Results.BadRequest(new { code = "invalid_public_key", message = fx.Message });
+            }
+            key = new Key(
+                Id: Guid.NewGuid(),
+                IdentityId: target.Id,
+                OrgId: target.OrgId,
+                Type: "ssh",
+                Fingerprint: parsed.Fingerprint,
+                Algorithm: parsed.Algorithm,
+                PublicKey: parsed.Canonical,
+                Comment: parsed.Comment,
+                Uids: null,
+                Provenance: provenance,
+                CreatedAt: DateTimeOffset.UtcNow,
+                ExpiresAt: request.ExpiresAt,
+                RevokedAt: null,
+                RevocationReason: null);
+            algorithm = parsed.Algorithm;
+        }
 
         try
         {
@@ -87,7 +114,8 @@ public static class UploadKey
             {
                 ["targetIdentityId"] = target.Id.ToString(),
                 ["targetEmail"] = target.Email,
-                ["algorithm"] = parsed.Algorithm,
+                ["algorithm"] = algorithm,
+                ["type"] = key.Type,
             }, ct);
 
         return Results.Created($"/v1/keys/{key.Id}", key);

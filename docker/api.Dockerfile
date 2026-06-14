@@ -40,8 +40,9 @@ RUN dotnet publish -c Release -o /publish
 # ===== Stage 3: Runtime ===================================================
 FROM mcr.microsoft.com/dotnet/aspnet:10.0-alpine AS runtime
 
-# ssh-keygen is needed at runtime to verify SSH-key sign-in signatures.
-RUN apk add --no-cache openssh-client
+# ssh-keygen verifies SSH-key sign-in signatures.
+# gpg extracts fingerprint + UIDs from uploaded OpenPGP public keys.
+RUN apk add --no-cache openssh-client gnupg
 
 WORKDIR /app
 COPY --from=api-build /publish ./

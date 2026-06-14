@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using System.Text;
 using Kini.Api.Authentication.Identities;
 using Kini.Api.Keys;
@@ -19,8 +20,8 @@ public static class WellKnownEndpoints
     }
 
     /// <summary>
-    /// GitHub-style SSH keys endpoint. Returns one authorized_keys-format
-    /// line per active SSH key, newline-separated.
+    /// GitHub-style SSH keys endpoint. One authorized_keys-format line per
+    /// active SSH key, newline-separated.
     /// </summary>
     private static async Task<IResult> GetUserDotKeys(
         string user,
@@ -29,7 +30,7 @@ public static class WellKnownEndpoints
         KeysCollection keys,
         CancellationToken ct)
     {
-        var identity = await ResolveIdentity(user, http, identities, ct);
+        var identity = await ResolveByUsername(user, identities, ct);
         if (identity is null) return Results.NotFound();
 
         var docs = await keys.ActiveForIdentity(identity.Id, type: "ssh", ct);
@@ -37,24 +38,114 @@ public static class WellKnownEndpoints
         return Results.Text(body, "text/plain; charset=utf-8");
     }
 
-    private static Task<IResult> GetUserDotGpg(string user) =>
-        // GPG publishing isn't wired yet. The endpoint exists per spec.
-        Task.FromResult(Results.NotFound());
+    /// <summary>
+    /// GitHub-style GPG endpoint. Returns the ASCII-armored OpenPGP public key
+    /// (concatenated if the identity has multiple active GPG keys).
+    /// </summary>
+    private static async Task<IResult> GetUserDotGpg(
+        string user,
+        IdentitiesCollection identities,
+        KeysCollection keys,
+        CancellationToken ct)
+    {
+        var identity = await ResolveByUsername(user, identities, ct);
+        if (identity is null) return Results.NotFound();
 
-    private static Task<IResult> GetWkdDirect(string localHash) =>
-        Task.FromResult(Results.NotFound());
+        var docs = await keys.ActiveForIdentity(identity.Id, type: "gpg", ct);
+        if (docs.Count == 0) return Results.NotFound();
 
-    private static Task<IResult> GetWkdAdvanced(string domain, string localHash) =>
-        Task.FromResult(Results.NotFound());
+        var body = string.Join('\n', docs.Select(k => k.PublicKey.TrimEnd())) + '\n';
+        return Results.Text(body, "application/pgp-keys");
+    }
 
     /// <summary>
-    /// Resolve <c>{user}</c> from a well-known URL to an Identity. Username
-    /// is the primary public identifier — globally unique, chosen at sign-up,
-    /// distinct from the email (which WKD requires and which we can't repurpose).
+    /// WKD direct method: <c>https://&lt;domain&gt;/.well-known/openpgpkey/hu/&lt;hash&gt;</c>
+    /// Returns the binary OpenPGP transferable public key.
     /// </summary>
-    private static Task<Identity?> ResolveIdentity(
-        string user,
+    private static async Task<IResult> GetWkdDirect(
+        string localHash,
         HttpContext http,
+        IdentitiesCollection identities,
+        KeysCollection keys,
+        CancellationToken ct)
+    {
+        var domain = http.Request.Host.Host;
+        return await ServeWkd(domain, localHash, identities, keys, ct);
+    }
+
+    /// <summary>
+    /// WKD advanced method: served from <c>openpgpkey.&lt;domain&gt;</c> with
+    /// the domain repeated in the URL path. Same response shape as direct.
+    /// </summary>
+    private static Task<IResult> GetWkdAdvanced(
+        string domain,
+        string localHash,
+        IdentitiesCollection identities,
+        KeysCollection keys,
+        CancellationToken ct) =>
+        ServeWkd(domain, localHash, identities, keys, ct);
+
+    private static async Task<IResult> ServeWkd(
+        string domain,
+        string localHash,
+        IdentitiesCollection identities,
+        KeysCollection keys,
+        CancellationToken ct)
+    {
+        // For each identity whose email matches @domain (or any identity in dev
+        // localhost mode), compute its WKD hash and compare. Costly only when
+        // the identity count grows; v0 acceptable.
+        var isDev = IsLocalHost(domain);
+        var filter = isDev
+            ? Builders<Identity>.Filter.Empty
+            : Builders<Identity>.Filter.Regex(i => i.Email, new BsonRegularExpression($"@{System.Text.RegularExpressions.Regex.Escape(domain)}$", "i"));
+
+        using var cursor = await identities.Collection.FindAsync(filter, cancellationToken: ct);
+        while (await cursor.MoveNextAsync(ct))
+        {
+            foreach (var i in cursor.Current)
+            {
+                var localPart = i.Email.Split('@', 2)[0];
+                if (WkdHashFor(localPart) != localHash) continue;
+
+                var docs = await keys.ActiveForIdentity(i.Id, type: "gpg", ct);
+                if (docs.Count == 0) return Results.NotFound();
+
+                // Concatenate binary public-key packet streams from each active GPG key.
+                // gpg --locate-keys accepts a single packet stream that contains multiple
+                // keys.
+                using var ms = new MemoryStream();
+                foreach (var k in docs)
+                {
+                    try
+                    {
+                        var bin = GpgPublicKey.Dearmor(k.PublicKey);
+                        ms.Write(bin, 0, bin.Length);
+                    }
+                    catch (FormatException) { /* skip malformed */ }
+                }
+                if (ms.Length == 0) return Results.NotFound();
+
+                return Results.Bytes(ms.ToArray(), "application/octet-stream");
+            }
+        }
+        return Results.NotFound();
+    }
+
+    /// <summary>SHA-1(lowercased local-part) → z-base-32. RFC: draft-koch-openpgp-webkey-service.</summary>
+    public static string WkdHashFor(string localPart)
+    {
+        var lower = localPart.ToLowerInvariant();
+        Span<byte> hash = stackalloc byte[20];
+        SHA1.HashData(Encoding.UTF8.GetBytes(lower), hash);
+        return ZBase32.Encode(hash);
+    }
+
+    private static bool IsLocalHost(string host) =>
+        host is "localhost" or "127.0.0.1" or "::1" || host.EndsWith(".localhost");
+
+    private static Task<Identity?> ResolveByUsername(
+        string user,
         IdentitiesCollection identities,
         CancellationToken ct) =>
         identities.FindByUsername(user.Trim().ToLowerInvariant(), ct);
