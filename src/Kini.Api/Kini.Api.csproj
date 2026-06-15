@@ -12,9 +12,9 @@
 
   <ItemGroup>
     <!-- Akka.NET -->
-    <PackageReference Include="Akka" Version="1.5.51" />
-    <PackageReference Include="Akka.Hosting" Version="1.5.51" />
-    <PackageReference Include="Akka.Streams" Version="1.5.51" />
+    <PackageReference Include="Akka" Version="1.5.69" />
+    <PackageReference Include="Akka.Hosting" Version="1.5.69" />
+    <PackageReference Include="Akka.Streams" Version="1.5.69" />
 
     <!-- MongoDB -->
     <PackageReference Include="MongoDB.Driver" Version="3.2.0" />
