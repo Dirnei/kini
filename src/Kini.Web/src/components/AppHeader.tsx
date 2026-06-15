@@ -8,8 +8,8 @@ const NAV_ITEMS: ReadonlyArray<{ to: string; label: string; end?: boolean; soon?
   { to: '/app/identities', label: 'Identities' },
   { to: '/app/keys',       label: 'Keys' },
   { to: '/app/tokens',     label: 'Tokens' },
+  { to: '/app/audit',      label: 'Audit' },
   { to: '#', label: 'Domains', soon: true },
-  { to: '#', label: 'Audit',   soon: true },
 ]
 
 const activeCls = 'text-[var(--color-ink)] underline underline-offset-8 decoration-[var(--color-oxblood)] decoration-2'

@@ -7,6 +7,7 @@ import { Dashboard } from './pages/Dashboard'
 import { Keys } from './pages/Keys'
 import { Identities } from './pages/Identities'
 import { Tokens } from './pages/Tokens'
+import { Audit } from './pages/Audit'
 
 export function App() {
   return (
@@ -20,6 +21,7 @@ export function App() {
         <Route path="identities" element={<Identities />} />
         <Route path="keys" element={<Keys />} />
         <Route path="tokens" element={<Tokens />} />
+        <Route path="audit" element={<Audit />} />
       </Route>
     </Routes>
   )
