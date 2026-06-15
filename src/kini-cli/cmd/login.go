@@ -56,22 +56,31 @@ func runLogin(_ *cobra.Command, _ []string) error {
 		return fmt.Errorf("--email is required (or signed up first via `kini signup`)")
 	}
 
-	keyPath := loginKey
-	if keyPath == "" {
-		keyPath = ssh.DefaultKey()
-	}
-	if keyPath == "" {
-		return fmt.Errorf("no SSH key specified and no default found under ~/.ssh; pass --key")
-	}
+	server := resolveServer(cfg)
 
-	c := api.New(resolveServer(cfg), "")
+	// Pick the right signing key. With an explicit --key, honor it. Otherwise
+	// query ssh-agent and prefer the identity matching Kini's published key
+	// for this user — this is the YubiKey-vs-passphraseful-file distinction.
+	var resolved ssh.Resolved
+	if loginKey != "" {
+		resolved = ssh.Resolved{Path: loginKey, Source: "--key " + loginKey, Cleanup: func() {}}
+	} else {
+		published := ssh.FetchPublishedSshKeys(server, cfg.Username)
+		resolved, err = ssh.ResolveForSigning(published)
+		if err != nil {
+			return err
+		}
+	}
+	defer resolved.Cleanup()
+
+	c := api.New(server, "")
 	chal, err := c.RequestSshChallenge(email)
 	if err != nil {
 		return err
 	}
 
-	fmt.Printf("Signing challenge with %s …\n", keyPath)
-	sig, err := ssh.Sign(keyPath, chal.Namespace, chal.Nonce)
+	fmt.Printf("Signing challenge via %s …\n", resolved.Source)
+	sig, err := ssh.Sign(resolved.Path, chal.Namespace, chal.Nonce)
 	if err != nil {
 		return err
 	}
@@ -81,7 +90,7 @@ func runLogin(_ *cobra.Command, _ []string) error {
 		return err
 	}
 
-	cfg.Server = resolveServer(cfg)
+	cfg.Server = server
 	cfg.Token = sess.Token
 	cfg.Email = email
 	if err := config.Save(cfg); err != nil {
