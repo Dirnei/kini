@@ -2,7 +2,7 @@
 
 A living list of what's not yet done. Reorganize and check off as we go.
 
-Last updated: 2026-06-15 (after `1cd8e87 CLI: pick the right signing key`).
+Last updated: 2026-06-15 (after `081a436` multi-tenant URL paths).
 
 ---
 
@@ -14,16 +14,14 @@ Last updated: 2026-06-15 (after `1cd8e87 CLI: pick the right signing key`).
 - [ ] **Better error UX.** Inline `<div className="text-oxblood-deep">…</div>` everywhere works but is ugly. Single toast component, surfaced from a query/mutation hook, would clean it up across `/app/*`.
 - [ ] **Key expiry enforcement.** `Key.ExpiresAt` is stored on publish but the `.keys` / `.gpg` / WKD endpoints don't filter on it. One-line `Builders<Key>.Filter.And(... ExpiresAt > now OR null)` per query.
 - [ ] **Vendor the web fonts.** `index.html` still links Fraunces / Mona Sans / JetBrains Mono from `fonts.googleapis.com`. Swap to `@fontsource/*` before any GDPR-sensitive launch.
-- [ ] **SPA bundle split.** ~349 KB JS is one chunk. `React.lazy` per page (Landing / Sign-in / Sign-up / App) shrinks the landing-page first paint.
-- [ ] **README on root.** Currently a minimal pointer. Should at least describe `docker compose up`, the three services, and how to bootstrap your first owner.
+- [ ] **SPA bundle split.** ~351 KB JS is one chunk. `React.lazy` per page (Landing / Sign-in / Sign-up / App) shrinks the landing-page first paint.
+- [x] **README on root.** ~~Currently a minimal pointer.~~ Done in `edb1c7b` — describes the stack, points at CONTRIBUTING + roadmap.
 
 ## Product surface (v1 launch path)
 
-- [ ] **Domain claims slice + edge TLS.** `Organizations/DomainClaims/` is in the spec but no code. Production needs:
-  - `POST /v1/orgs/{id}/domains` returns a DNS TXT challenge.
-  - `POST /v1/orgs/{id}/domains/{domain}/verify` polls DNS and flips `status` to `verified`.
-  - Request routing by `Host` header so `keys.acme.tld` serves Acme's identities, not someone else's.
-  - Automated Let's Encrypt at the edge (most-likely: Caddy or `acmesharp` running ahead of Kestrel).
+- [x] **Multi-tenant URL paths** (was "Domain claims slice"). ~~`Organizations/DomainClaims/` is in the spec but no code.~~ Done in `081a436`: `/{slug}/{user}.keys` and `/{primaryDomain}/{user}.keys` both route org-scoped, served from the shared host. **Still TODO:** DNS-verification of `PrimaryDomain` (today it's claimed at sign-up without proof) and per-customer DNS+TLS at `keys.acme.tld` (the original "domain claims" idea — now optional rather than mandatory thanks to the path-based routing).
+- [ ] **DNS verification of PrimaryDomain.** Today anyone can sign up claiming `acme.tld` as their org's primary domain. Add `POST /v1/orgs/{id}/domains/{domain}/verify` that polls a TXT record (`_kini-verify.acme.tld = <token>`); flag domains as `verified: true | false`; only show the `/{primaryDomain}/...` URL once verified.
+- [ ] **Per-customer custom-domain serving + edge TLS.** Once a customer DNS-verifies their domain, allow them to also CNAME `keys.acme.tld` to Kini's edge and serve `keys.acme.tld/alice.keys` directly. Needs Let's Encrypt automation (Caddy or `acmesharp` in front of Kestrel). This is the "look like a 1st-party service" upgrade; the path-based form covers the rest.
 - [ ] **Invite-link email flow.** Today owners create members with no notification; the member only knows because someone tells them. v1: signed invite token in a URL the owner shares; member visits, signs up against the existing identity record.
 - [ ] **Email verification.** Brand-new sign-ups self-verify by holding the SSH key, which is fine for the bootstrap. Member identities created by owners shouldn't be `verified` until the member proves email ownership via a one-time link.
 - [ ] **OIDC sign-in.** Google Workspace, Microsoft 365, Okta. Big chunk: SAML / OIDC client setup, IdP-bound identities, JIT provisioning. Required by every enterprise buyer above ~20 seats.
@@ -39,11 +37,11 @@ Last updated: 2026-06-15 (after `1cd8e87 CLI: pick the right signing key`).
 
 ## Production readiness / ops
 
-- [ ] **Choose the real domain.** `kini.*` availability still gated on Christian's domain + trademark check from the original plan.
+- [ ] **Choose the real domain.** `kini.*` availability still gated on a domain + trademark check.
 - [ ] **Deploy somewhere.** Fly.io / Hetzner / Render — anywhere with persistent volumes for Mongo. The Docker stack is the deploy artifact.
-- [ ] **TLS at the API edge.** Not just the public `.keys`/WKD endpoints (which need per-customer-domain TLS via Let's Encrypt) — the management API too. Reverse proxy in front of Kestrel.
+- [ ] **TLS at the API edge.** Not just the public `.keys`/WKD endpoints — the management API too. Reverse proxy in front of Kestrel.
 - [ ] **Secrets management.** Mongo connection string + future OIDC client secrets shouldn't live in `appsettings.json`. Sealed-secrets / Doppler / a `.env` reader, pick one.
-- [ ] **CI pipeline.** GitHub Actions (or equivalent): build api + cli, run tests, build images, push on tag.
+- [ ] **CI pipeline.** GitHub Actions: build api + cli, run tests, build images, push on tag.
 - [ ] **Reproducible Go binary builds.** Cross-compile `kini-cli` for darwin-{amd64,arm64}, linux-{amd64,arm64}, windows-amd64. Sign macOS builds. Publish on GitHub Releases.
 - [ ] **Observability.** Structured logs, OpenTelemetry traces, a `/metrics` endpoint. Nothing here is on fire but anyone running this in prod will want it on day 1.
 - [ ] **Rate limiting.** Sign-in challenge endpoint is currently unauth + unlimited. ASP.NET Core's `RateLimiter` middleware, IP-bucketed.
@@ -51,20 +49,21 @@ Last updated: 2026-06-15 (after `1cd8e87 CLI: pick the right signing key`).
 
 ## Open-source / community
 
-- [ ] **License.** README + `Kini.Api.csproj` say `TBD`. Pick AGPL-3.0 (matches step-ca / Hashicorp Vault) and commit.
-- [ ] **CONTRIBUTING.md.** Repo structure overview, how to run locally, conventional-commit style if we want one.
-- [ ] **CLAUDE.md.** Project-level conventions for future Claude sessions — vertical-slice + Microsoft-style namespaces, no DDD jargon, no commit-on-my-behalf, etc. Reflects what's already in private memory but should be in the repo so contributors see it.
-- [ ] **One-pager refresh.** `docs/one-pager.md` was written pre-implementation. Reality is now substantially different (multi-user, audit, API tokens, GPG, CLI). Bring it up to date or split into a separate "current state" doc.
+- [x] **License.** ~~README + `Kini.Api.csproj` say `TBD`.~~ Done in `edb1c7b` — AGPL-3.0-or-later, `LICENSE` at root, spec license fields updated.
+- [x] **CONTRIBUTING.md.** ~~Repo structure overview, how to run locally, conventional-commit style if we want one.~~ Done in `edb1c7b`.
+- [x] **CLAUDE.md.** ~~Project-level conventions for future Claude sessions.~~ Done in `edb1c7b`.
+- [x] **One-pager refresh.** ~~`docs/one-pager.md` was written pre-implementation.~~ Done in `edb1c7b` — appended a "what's actually built" section and pointer to this roadmap.
 - [ ] **Customize OpenAPI docs render.** The `/docs/` Redoc viewers serve the raw spec. A small custom theme + intro page would make the docs feel like part of the product.
 
 ## Smaller follow-ups noted along the way
 
 - [ ] Webhook payload schemas (`key.created`, `key.revoked`, `key.expiring`) — declared in the one-pager, not in the spec or code yet.
-- [ ] Self-service org domain disambiguation. The WKD direct-method walks all identities computing hashes per request; index by `WkdHash` or pre-compute when there are >1k identities.
+- [ ] WKD lookup scale-out. The direct-method walks all identities computing hashes per request; index by `WkdHash` or pre-compute when there are >1k identities.
 - [ ] GPG key lookup by short ID / long ID, not just by username. Useful for `gpg --recv-keys` interop.
 - [ ] CLI: `kini config` subcommand to view/edit the persisted config without a text editor.
 - [ ] CLI: `kini publish --gpg` flag (currently the CLI only does SSH).
 - [ ] CLI: shell-completion install instructions (`kini completion bash` etc.) — already works via cobra, just needs README mention.
+- [ ] **Static-asset routes collide with org slugs.** Currently `/assets/*.js` and `/assets/*.css` are served from `wwwroot` by `app.UseStaticFiles()` before the org-scoped route runs, so we're fine — but `OrgSlug.Reserved` should be kept in sync if we ever add new top-level static paths.
 
 ---
 

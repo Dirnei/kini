@@ -128,3 +128,7 @@ app.MapAuditEndpoints();
 app.MapFallbackToFile("index.html");
 
 app.Run();
+
+// Expose the auto-generated top-level-statements Program class so the
+// integration test project can use WebApplicationFactory<Program>.
+public partial class Program { }
