@@ -1,0 +1,207 @@
+# Release: tag-triggered publish of the CLI binaries + Docker image, with
+# SLSA build-provenance attestations for everything we ship.
+#
+# Trusted publishing model:
+#   - No long-lived secrets. Auth to GHCR uses the workflow's GITHUB_TOKEN
+#     (limited to this repo).
+#   - SLSA provenance attestations are signed with the workflow's OIDC
+#     identity via actions/attest-build-provenance. Consumers verify with
+#     `gh attestation verify` or `cosign verify-attestation`.
+#
+# Trigger: push a tag like `v0.1.0`. Or fire `workflow_dispatch` for a dry
+# manual run (set inputs.tag to label the artifacts).
+
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Override tag for manual runs (e.g. v0.0.0-dev)'
+        required: false
+        default: 'v0.0.0-dev'
+
+permissions:
+  contents: write       # create the GitHub Release + upload assets
+  packages: write       # push to ghcr.io
+  id-token: write       # mint OIDC tokens (used by attestations)
+  attestations: write   # actions/attest-build-provenance writes here
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: kini-api
+
+jobs:
+  # ───────────────────────────────────────────────────────────────────────
+  # Cross-platform CLI binaries with SLSA provenance.
+  # ───────────────────────────────────────────────────────────────────────
+  cli:
+    name: CLI · build (${{ matrix.target.suffix }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - { goos: linux,   goarch: amd64, suffix: linux-amd64,   ext: '' }
+          - { goos: linux,   goarch: arm64, suffix: linux-arm64,   ext: '' }
+          - { goos: darwin,  goarch: amd64, suffix: darwin-amd64,  ext: '' }
+          - { goos: darwin,  goarch: arm64, suffix: darwin-arm64,  ext: '' }
+          - { goos: windows, goarch: amd64, suffix: windows-amd64, ext: '.exe' }
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache-dependency-path: src/kini-cli/go.sum
+
+      - name: Resolve version
+        id: ver
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "tag=${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build
+        working-directory: src/kini-cli
+        env:
+          CGO_ENABLED: '0'
+          GOOS: ${{ matrix.target.goos }}
+          GOARCH: ${{ matrix.target.goarch }}
+        run: |
+          mkdir -p ../../dist
+          BIN="../../dist/kini-${{ matrix.target.suffix }}${{ matrix.target.ext }}"
+          go build \
+            -trimpath \
+            -ldflags "-s -w -X kini/cmd.version=${{ steps.ver.outputs.tag }}" \
+            -o "$BIN" .
+          sha256sum "$BIN" | tee "$BIN.sha256"
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v1
+        with:
+          subject-path: 'dist/kini-${{ matrix.target.suffix }}${{ matrix.target.ext }}'
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cli-${{ matrix.target.suffix }}
+          path: |
+            dist/kini-${{ matrix.target.suffix }}${{ matrix.target.ext }}
+            dist/kini-${{ matrix.target.suffix }}${{ matrix.target.ext }}.sha256
+          if-no-files-found: error
+          retention-days: 7
+
+  # ───────────────────────────────────────────────────────────────────────
+  # Multi-arch API container image, pushed to GHCR, with SLSA provenance
+  # pushed alongside as an attestation manifest.
+  # ───────────────────────────────────────────────────────────────────────
+  image:
+    name: Container · build + push
+    runs-on: ubuntu-latest
+    outputs:
+      digest: ${{ steps.push.outputs.digest }}
+      image: ${{ steps.meta.outputs.image }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Lowercase owner for GHCR
+        id: owner
+        run: |
+          owner_lc="${GITHUB_REPOSITORY_OWNER,,}"
+          echo "lc=${owner_lc}" >> "$GITHUB_OUTPUT"
+          echo "image=${{ env.REGISTRY }}/${owner_lc}/${{ env.IMAGE_NAME }}" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve version
+        id: ver
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "tag=${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: GHCR login
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Image metadata (tags, labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.owner.outputs.image }}
+          tags: |
+            type=raw,value=${{ steps.ver.outputs.tag }}
+            type=raw,value=latest,enable=${{ github.event_name != 'workflow_dispatch' }}
+          labels: |
+            org.opencontainers.image.title=Kini API
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.licenses=AGPL-3.0-or-later
+
+      - name: Build + push
+        id: push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/api.Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          provenance: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Attest build provenance (pushed to registry)
+        uses: actions/attest-build-provenance@v1
+        with:
+          subject-name: ${{ steps.owner.outputs.image }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
+
+  # ───────────────────────────────────────────────────────────────────────
+  # Roll up the CLI artifacts into a GitHub Release.
+  # ───────────────────────────────────────────────────────────────────────
+  release:
+    name: GitHub Release
+    needs: [cli, image]
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          pattern: cli-*
+          merge-multiple: true
+
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/kini-*
+          generate_release_notes: true
+          body: |
+            ## Installation
+
+            **CLI:** Download the binary for your platform below and place it on your `PATH`.
+            Each binary ships with a SHA-256 checksum file and an attached SLSA build-provenance
+            attestation — verify with `gh attestation verify ./kini-* --repo ${{ github.repository }}`.
+
+            **API container:** `docker pull ghcr.io/${{ github.repository_owner }}/kini-api:${{ github.ref_name }}`
+            (lowercase the owner if your username has uppercase letters).
+            Verify the image attestation:
+            ```
+            gh attestation verify oci://ghcr.io/${{ github.repository_owner }}/kini-api:${{ github.ref_name }} \
+              --repo ${{ github.repository }}
+            ```

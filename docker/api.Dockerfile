@@ -13,7 +13,7 @@ WORKDIR /repo
 # Install deps first for cacheable layer.
 COPY src/Kini.Web/package*.json ./src/Kini.Web/
 WORKDIR /repo/src/Kini.Web
-RUN npm install --no-audit --no-fund
+RUN npm ci --no-audit --no-fund
 
 # Bring in the spec (needed by `npm run gen:api`) and the rest of the web tree.
 WORKDIR /repo

@@ -1,0 +1,90 @@
+# CI: build + test on every push and pull request.
+#
+# Runs in three parallel jobs so a failure is easy to attribute:
+#   - api-test  : compiles Kini.Api + the test project and runs xUnit
+#                 (Testcontainers.MongoDb spins up an ephemeral mongo:8
+#                  on the runner's Docker daemon).
+#   - cli-build : compiles the Go CLI for the host arch + vets it.
+#   - web-build : type-checks and Vite-builds the SPA.
+#
+# Everything's `--frozen-lockfile`-style and uses pinned major versions
+# of the setup actions for reproducibility.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  api-test:
+    name: API · build + xUnit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: NuGet restore cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      - name: Build
+        run: dotnet build tests/Kini.Api.Tests/Kini.Api.Tests.csproj --configuration Release
+
+      - name: Test
+        # ubuntu-latest provides /var/run/docker.sock and shares its network
+        # with launched containers, so Testcontainers' default localhost
+        # connection string just works (no HOST_OVERRIDE needed).
+        run: dotnet test tests/Kini.Api.Tests/Kini.Api.Tests.csproj --configuration Release --no-build --logger "console;verbosity=normal"
+
+  cli-build:
+    name: CLI · build + vet
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src/kini-cli
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache-dependency-path: src/kini-cli/go.sum
+
+      - run: go vet ./...
+      - run: go build ./...
+
+  web-build:
+    name: Web · typecheck + vite build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src/Kini.Web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: src/Kini.Web/package-lock.json
+
+      - run: npm ci --no-audit --no-fund
+      - name: Generate TS types from OpenAPI
+        run: npm run gen:api
+      - run: npm run build

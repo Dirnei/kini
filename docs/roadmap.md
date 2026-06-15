@@ -2,14 +2,14 @@
 
 A living list of what's not yet done. Reorganize and check off as we go.
 
-Last updated: 2026-06-15 (after `081a436` multi-tenant URL paths).
+Last updated: 2026-06-15 (after CI + Release workflows with trusted publishing).
 
 ---
 
 ## Near-term polish (small, do anytime)
 
-- [ ] **Audit log UI** (`/app/audit`). Backend writes + `GET /v1/audit` already work; no page renders it yet. ~1 session.
-- [ ] **First test.** We have zero tests across the whole repo. Start with one xUnit project against `Kini.Api` that uses Testcontainers for Mongo and exercises sign-up → verify → publish → resolve in one go. The smoke flow we've been re-running by hand should be code.
+- [x] **Audit log UI** (`/app/audit`). Done in `6bc22d3`. Filter chips (All / Sign-ins / Identities / Keys / Tokens / Org), Gravatar-decorated rows, color-coded action labels, collapsible detail map. Server-cursor pagination still TODO.
+- [x] **First test.** Done in `7bcaf66`. `tests/Kini.Api.Tests/` (xUnit + Testcontainers.MongoDb + WebApplicationFactory). Three covers: end-to-end sign-up → resolve at all three URL shapes; duplicate-slug returns 409; `/healthz` works unauth. ~8s test run.
 - [ ] **Transitive-dep CVE warnings.** `MongoDB.Driver 3.2.0` pulls in `SharpCompress 0.30.1` (moderate) and `Snappier 1.0.0` (high). Not exploitable in our usage but worth a `<PackageReference VersionOverride>` to nudge them up.
 - [ ] **Better error UX.** Inline `<div className="text-oxblood-deep">…</div>` everywhere works but is ugly. Single toast component, surfaced from a query/mutation hook, would clean it up across `/app/*`.
 - [ ] **Key expiry enforcement.** `Key.ExpiresAt` is stored on publish but the `.keys` / `.gpg` / WKD endpoints don't filter on it. One-line `Builders<Key>.Filter.And(... ExpiresAt > now OR null)` per query.
@@ -41,8 +41,9 @@ Last updated: 2026-06-15 (after `081a436` multi-tenant URL paths).
 - [ ] **Deploy somewhere.** Fly.io / Hetzner / Render — anywhere with persistent volumes for Mongo. The Docker stack is the deploy artifact.
 - [ ] **TLS at the API edge.** Not just the public `.keys`/WKD endpoints — the management API too. Reverse proxy in front of Kestrel.
 - [ ] **Secrets management.** Mongo connection string + future OIDC client secrets shouldn't live in `appsettings.json`. Sealed-secrets / Doppler / a `.env` reader, pick one.
-- [ ] **CI pipeline.** GitHub Actions: build api + cli, run tests, build images, push on tag.
-- [ ] **Reproducible Go binary builds.** Cross-compile `kini-cli` for darwin-{amd64,arm64}, linux-{amd64,arm64}, windows-amd64. Sign macOS builds. Publish on GitHub Releases.
+- [x] **CI pipeline.** Done. `.github/workflows/ci.yml` runs three parallel jobs on push/PR: api-test (xUnit + Testcontainers), cli-build (go vet + go build), web-build (typecheck + vite build). Dependabot config covers Actions / NuGet / npm / Go modules / Docker base images.
+- [x] **Reproducible Go binary builds.** Done. `.github/workflows/release.yml` on tag-push (`v*`) cross-compiles `kini-cli` for darwin/linux/windows × amd64/arm64, with `-trimpath -ldflags "-s -w"`; each binary gets a SLSA build-provenance attestation via `actions/attest-build-provenance@v1` and a SHA-256 checksum file. Released via `softprops/action-gh-release`. macOS code-signing is still on Christian's side (needs an Apple Developer ID); the attestation is the cryptographic-integrity story for now.
+- [ ] **Multi-arch container image + provenance.** _Already part of release.yml_ — multi-arch (linux/amd64+arm64) push to `ghcr.io/<owner>/kini-api` with `actions/attest-build-provenance@v1 push-to-registry: true`. Verify with `gh attestation verify oci://ghcr.io/<owner>/kini-api:<tag> --repo <owner>/kini`. (Listed here because it pairs with the binary builds; the work is done.)
 - [ ] **Observability.** Structured logs, OpenTelemetry traces, a `/metrics` endpoint. Nothing here is on fire but anyone running this in prod will want it on day 1.
 - [ ] **Rate limiting.** Sign-in challenge endpoint is currently unauth + unlimited. ASP.NET Core's `RateLimiter` middleware, IP-bucketed.
 - [ ] **Backup / restore for Mongo.** `mongodump`/`mongorestore` in a cron container; or hand it off to whatever managed Mongo we end up on.

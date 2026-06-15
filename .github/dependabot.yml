@@ -1,0 +1,40 @@
+# Keep build dependencies and Actions versions fresh without rote toil.
+# Bumps land as PRs that CI gates the same as any other change.
+
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: nuget
+    directory: /src/Kini.Api
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: nuget
+    directory: /tests/Kini.Api.Tests
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: npm
+    directory: /src/Kini.Web
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: gomod
+    directory: /src/kini-cli
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: docker
+    directory: /docker
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
