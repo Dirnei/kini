@@ -7,7 +7,7 @@
 # syntax=docker/dockerfile:1.7
 
 # ===== Stage 1: SPA build =================================================
-FROM node:22-alpine AS web-build
+FROM node:26-alpine AS web-build
 WORKDIR /repo
 
 # Install deps first for cacheable layer.
