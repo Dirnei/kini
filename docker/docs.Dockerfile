@@ -2,7 +2,7 @@
 # Serves the OpenAPI specs and the Redoc-based HTML viewers behind nginx.
 # Static image; nothing to build at runtime.
 
-FROM nginx:1.27-alpine
+FROM nginx:1.31-alpine
 
 COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
 COPY docs/             /usr/share/nginx/html/docs/
