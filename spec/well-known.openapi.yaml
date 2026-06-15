@@ -94,6 +94,54 @@ paths:
         '404':
           description: No key for this user.
 
+  /{org}/{user}.keys:
+    parameters:
+      - in: path
+        name: org
+        required: true
+        description: |
+          The org's slug (e.g. `acme`) OR its primary domain (e.g.
+          `acme.tld`). Both route to the same identities. The shared
+          host serves these without per-customer DNS or TLS.
+        schema: { type: string, example: acme }
+      - $ref: '#/components/parameters/User'
+    get:
+      tags: [github-style]
+      operationId: getSshKeysScoped
+      summary: SSH authorized_keys for a user within a specific org.
+      description: |
+        Same shape as `/{user}.keys`, but scoped — the user must belong
+        to the named org. The `{org}` segment can be either the slug or
+        the primaryDomain; slugs forbid dots so the two are disjoint.
+      responses:
+        '200':
+          description: Zero or more authorized_keys lines, newline-separated.
+          content:
+            text/plain:
+              schema: { type: string }
+        '404':
+          description: No such org / user / key.
+
+  /{org}/{user}.gpg:
+    parameters:
+      - in: path
+        name: org
+        required: true
+        schema: { type: string, example: acme }
+      - $ref: '#/components/parameters/User'
+    get:
+      tags: [github-style]
+      operationId: getGpgArmoredScoped
+      summary: Armored GPG public key for a user within a specific org.
+      responses:
+        '200':
+          description: ASCII-armored OpenPGP public key block(s).
+          content:
+            application/pgp-keys:
+              schema: { type: string }
+        '404':
+          description: No GPG key for this user / org.
+
   /{user}.keys:
     parameters:
       - $ref: '#/components/parameters/User'

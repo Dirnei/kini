@@ -635,11 +635,25 @@ components:
     # --- Domain entities -------------------------------------------------
     Organization:
       type: object
-      required: [id, name, createdAt]
+      required: [id, name, slug, createdAt]
       properties:
         id: { type: string, format: uuid }
         name: { type: string }
-        primaryDomain: { type: string, nullable: true }
+        slug:
+          type: string
+          description: |
+            URL-safe identifier, globally unique, lowercase alphanumeric +
+            hyphen (no dots). Required. Routes as
+            `kini.io/{slug}/{username}.keys`.
+          example: acme
+        primaryDomain:
+          type: string
+          nullable: true
+          description: |
+            Optional DNS-style identifier, globally unique when set.
+            Also routes as `kini.io/{primaryDomain}/{username}.keys`.
+            Future: DNS-verified via the DomainClaims slice.
+          example: acme.tld
         createdAt: { type: string, format: date-time }
 
     DomainClaim:
@@ -962,10 +976,23 @@ components:
     # --- Sign-up + auth requests ----------------------------------------
     SignUpRequest:
       type: object
-      required: [organizationName, username, email, sshPublicKey]
+      required: [organizationName, orgSlug, username, email, sshPublicKey]
       properties:
         organizationName: { type: string }
-        primaryDomain: { type: string, nullable: true }
+        orgSlug:
+          type: string
+          description: |
+            URL-safe identifier for your org, globally unique. Lowercase
+            alphanumeric + hyphen, no dots, 2–32 chars. Routes as
+            `kini.io/{orgSlug}/{username}.keys`.
+          example: acme
+        primaryDomain:
+          type: string
+          nullable: true
+          description: |
+            Optional DNS-style identifier (e.g. `acme.tld`). Also routes
+            via `kini.io/{primaryDomain}/{username}.keys` when set.
+          example: acme.tld
         username:
           type: string
           description: |

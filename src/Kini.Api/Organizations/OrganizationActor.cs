@@ -4,7 +4,7 @@ using MongoDB.Driver;
 
 namespace Kini.Api.Organizations;
 
-public sealed record CreateOrganizationCommand(string Name, string? PrimaryDomain);
+public sealed record CreateOrganizationCommand(string Name, string Slug, string? PrimaryDomain);
 
 public sealed class OrganizationActor : ReceiveActor
 {
@@ -22,7 +22,8 @@ public sealed class OrganizationActor : ReceiveActor
         var org = new Organization(
             Id: Guid.NewGuid(),
             Name: cmd.Name,
-            PrimaryDomain: cmd.PrimaryDomain,
+            Slug: cmd.Slug,
+            PrimaryDomain: string.IsNullOrWhiteSpace(cmd.PrimaryDomain) ? null : cmd.PrimaryDomain.Trim().ToLowerInvariant(),
             CreatedAt: DateTimeOffset.UtcNow);
 
         await _orgs.Collection.InsertOneAsync(org);

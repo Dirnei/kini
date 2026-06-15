@@ -7,6 +7,7 @@ export function SignUp() {
   const navigate = useNavigate()
 
   const [orgName, setOrgName] = useState('')
+  const [orgSlug, setOrgSlug] = useState('')
   const [primaryDomain, setPrimaryDomain] = useState('')
   const [username, setUsername] = useState('')
   const [email, setEmail] = useState('')
@@ -26,6 +27,7 @@ export function SignUp() {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           organizationName: orgName.trim(),
+          orgSlug: orgSlug.trim().toLowerCase(),
           primaryDomain: primaryDomain.trim() || null,
           username: username.trim().toLowerCase(),
           email: email.trim(),
@@ -84,9 +86,32 @@ export function SignUp() {
                 placeholder="Acme, Inc." className={inputCls} />
             </Field>
 
+            <Field label="Org slug (URL identifier)">
+              <input
+                type="text"
+                required
+                pattern="[a-z0-9]([a-z0-9-]{0,30}[a-z0-9])?"
+                minLength={2}
+                maxLength={32}
+                value={orgSlug}
+                onChange={(e) => setOrgSlug(e.target.value.toLowerCase())}
+                placeholder="acme"
+                className={`${inputCls} font-mono`}
+              />
+              <p className="mt-2 text-xs text-[var(--color-ink-muted)]">
+                Required. Globally unique. Lowercase letters / digits / hyphens, no dots. Routes as{' '}
+                <code className="font-mono text-[0.7rem] text-[var(--color-ink)]">/{orgSlug || 'slug'}/{username || 'username'}.keys</code>.
+              </p>
+            </Field>
+
             <Field label="Primary domain (optional)">
-              <input type="text" value={primaryDomain} onChange={(e) => setPrimaryDomain(e.target.value)}
-                placeholder="acme.tld" className={inputCls} />
+              <input type="text" value={primaryDomain} onChange={(e) => setPrimaryDomain(e.target.value.toLowerCase())}
+                placeholder="acme.tld" className={`${inputCls} font-mono`} />
+              <p className="mt-2 text-xs text-[var(--color-ink-muted)]">
+                Optional DNS-style identifier. If set, also routes as{' '}
+                <code className="font-mono text-[0.7rem] text-[var(--color-ink)]">/{primaryDomain || 'acme.tld'}/{username || 'username'}.keys</code>.
+                Future: DNS-verified.
+              </p>
             </Field>
 
             <Field label="Username (public handle)">

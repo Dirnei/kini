@@ -21,7 +21,8 @@ type PublishedKey = {
 
 export function Keys() {
   const { me } = useOutletContext<AppOutletContext>()
-  const publicUrl = `${window.location.origin}/${me.identity.username}.keys`
+  const flatUrl   = `${window.location.origin}/${me.identity.username}.keys`
+  const scopedUrl = `${window.location.origin}/${me.organization.primaryDomain}/${me.identity.username}.keys`
 
   return (
     <main className="flex-1 max-w-[1400px] w-full mx-auto px-6 md:px-10 py-12">
@@ -30,11 +31,13 @@ export function Keys() {
         What the <span className="italic text-[var(--color-oxblood)]">world</span> can resolve.
       </h1>
       <p className="reveal mt-4 text-lg text-[var(--color-ink-muted)] max-w-2xl" style={{ animationDelay: '160ms' }}>
-        Keys you publish here are served at the URL below — Ansible's <code className="font-mono text-base text-[var(--color-ink)]">authorized_key</code> module
-        and GitHub-style consumers resolve them without any config on the consumer side.
+        Two URLs serve the same keys. Use whichever your downstream tool wants — Ansible's <code className="font-mono text-base text-[var(--color-ink)]">authorized_key</code> module accepts both.
       </p>
 
-      <PublicUrl url={publicUrl} />
+      <div className="space-y-3 mt-12">
+        <PublicUrl url={scopedUrl} note="org-scoped (safe across orgs on the shared host)" />
+        <PublicUrl url={flatUrl}   note="flat (lookup by globally-unique username)" />
+      </div>
 
       <UploadForm email={me.identity.email} />
 
@@ -45,7 +48,7 @@ export function Keys() {
 
 /* ────────────────────────────────────────────────────────── */
 
-function PublicUrl({ url }: { url: string }) {
+function PublicUrl({ url, note }: { url: string; note?: string }) {
   const [copied, setCopied] = useState(false)
   async function copy() {
     try {
@@ -55,13 +58,16 @@ function PublicUrl({ url }: { url: string }) {
     } catch { /* clipboard may be unavailable */ }
   }
   return (
-    <div className="reveal mt-12 flex items-center justify-between bg-[var(--color-ink)] text-[var(--color-parchment)] rounded-sm p-5" style={{ animationDelay: '220ms' }}>
-      <code className="font-mono text-sm md:text-base truncate">
-        <span className="text-[var(--color-gold)]">GET </span>{url}
-      </code>
-      <button onClick={copy} className="text-[10px] font-mono uppercase tracking-[0.18em] text-[var(--color-parchment)]/45 hover:text-[var(--color-gold)] transition-colors px-2">
-        {copied ? '✓ copied' : 'copy'}
-      </button>
+    <div className="reveal" style={{ animationDelay: '220ms' }}>
+      <div className="flex items-center justify-between bg-[var(--color-ink)] text-[var(--color-parchment)] rounded-sm p-5">
+        <code className="font-mono text-sm md:text-base truncate">
+          <span className="text-[var(--color-gold)]">GET </span>{url}
+        </code>
+        <button onClick={copy} className="text-[10px] font-mono uppercase tracking-[0.18em] text-[var(--color-parchment)]/45 hover:text-[var(--color-gold)] transition-colors px-2">
+          {copied ? '✓ copied' : 'copy'}
+        </button>
+      </div>
+      {note && <p className="mt-1 ml-1 font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--color-ink-muted)]">{note}</p>}
     </div>
   )
 }

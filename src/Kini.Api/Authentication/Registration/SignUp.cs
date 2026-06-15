@@ -13,7 +13,8 @@ public static class SignUp
 {
     public sealed record Request(
         string OrganizationName,
-        string? PrimaryDomain,
+        string OrgSlug,              // required, URL-safe (lowercase alnum + hyphen, no dots)
+        string? PrimaryDomain,       // optional; DNS-shaped; also routable
         string Username,
         string Email,
         string? DisplayName,
@@ -37,6 +38,8 @@ public static class SignUp
     {
         if (string.IsNullOrWhiteSpace(request.OrganizationName))
             return Results.BadRequest(new { code = "invalid_organization_name" });
+        if (!OrgSlug.TryNormalize(request.OrgSlug, out var orgSlug, out var slugError))
+            return Results.BadRequest(new { code = "invalid_org_slug", message = slugError });
         if (!Username.TryNormalize(request.Username, out var username, out var usernameError))
             return Results.BadRequest(new { code = "invalid_username", message = usernameError });
         if (string.IsNullOrWhiteSpace(request.Email) || !request.Email.Contains('@'))
@@ -58,13 +61,34 @@ public static class SignUp
         if (existingIdentity is not null)
             return Results.Conflict(new { code = "email_taken" });
 
+        // Pre-flight uniqueness checks so we don't half-create then roll back.
+        if (await orgs.SlugTaken(orgSlug, ct))
+            return Results.Conflict(new { code = "org_slug_taken" });
+
+        string? primaryDomain = null;
+        if (!string.IsNullOrWhiteSpace(request.PrimaryDomain))
+        {
+            primaryDomain = request.PrimaryDomain.Trim().ToLowerInvariant();
+            if (await orgs.DomainTaken(primaryDomain, ct))
+                return Results.Conflict(new { code = "primary_domain_taken" });
+        }
+
         var org = new Organization(
             Id: Guid.NewGuid(),
             Name: request.OrganizationName.Trim(),
-            PrimaryDomain: string.IsNullOrWhiteSpace(request.PrimaryDomain) ? null : request.PrimaryDomain.Trim(),
+            Slug: orgSlug,
+            PrimaryDomain: primaryDomain,
             CreatedAt: DateTimeOffset.UtcNow);
 
-        await orgs.Collection.InsertOneAsync(org, cancellationToken: ct);
+        try
+        {
+            await orgs.Collection.InsertOneAsync(org, cancellationToken: ct);
+        }
+        catch (MongoWriteException ex) when (ex.WriteError.Category == ServerErrorCategory.DuplicateKey)
+        {
+            var code = ex.WriteError.Message.Contains("primaryDomain") ? "primary_domain_taken" : "org_slug_taken";
+            return Results.Conflict(new { code });
+        }
 
         var identity = new Identity(
             Id: Guid.NewGuid(),
