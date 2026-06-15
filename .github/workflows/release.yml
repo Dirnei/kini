@@ -83,7 +83,7 @@ jobs:
           sha256sum "$BIN" | tee "$BIN.sha256"
 
       - name: Attest build provenance
-        uses: actions/attest-build-provenance@v1
+        uses: actions/attest-build-provenance@v4
         with:
           subject-path: 'dist/kini-${{ matrix.target.suffix }}${{ matrix.target.ext }}'
 
@@ -164,7 +164,7 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Attest build provenance (pushed to registry)
-        uses: actions/attest-build-provenance@v1
+        uses: actions/attest-build-provenance@v4
         with:
           subject-name: ${{ steps.owner.outputs.image }}
           subject-digest: ${{ steps.push.outputs.digest }}
