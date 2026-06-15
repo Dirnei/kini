@@ -100,4 +100,8 @@ Both read `spec/api.openapi.yaml`. If they drift, the contract is the source of 
 
 ## Status
 
-Scaffolding. One vertical slice wired end-to-end (`Organizations`: actor + Mongo + endpoints). SPA renders a placeholder. No auth yet — that's the next slice.
+Active alpha. End-to-end auth flow (SSH-key + WebAuthn), key publishing (SSH + GPG via WKD), multi-user orgs with admin-uploads-for-members, audit log, API tokens, and a Go CLI all work. See [`docs/roadmap.md`](docs/roadmap.md) for what's still open.
+
+## License
+
+[AGPL-3.0-or-later](LICENSE). See [`CONTRIBUTING.md`](CONTRIBUTING.md) for how to get a local stack running and how the repo is laid out.

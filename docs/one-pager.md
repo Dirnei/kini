@@ -75,7 +75,20 @@ A multi-tenant directory that:
 - Terraform provider, Ansible collection, GitHub Action
 
 ## Open questions
-- Name + domain
+- Name + domain (working name **Kini** chosen; domain availability still to verify)
 - Pricing (likely per-user/month with generous free tier for individuals + open-source projects)
-- Self-hosted licensing model (AGPL core + commercial SaaS? source-available?)
+- ~~Self-hosted licensing model~~ — settled: AGPL-3.0-or-later, commercial SaaS on top
 - Whether to lean into SSH CA in v2 or hold for v3 — it's a different product shape
+
+## What's actually built (as of 2026-06-15)
+
+This one-pager was written before implementation began. Since then, the following have shipped:
+
+- End-to-end auth: sign-up, sign-in via SSH-key challenge/response and WebAuthn (`Fido2NetLib` 4.x), bearer-token sessions, sign-out.
+- Multi-user orgs with `Owner | Member` roles. Owners can create unregistered member identities and publish keys on their behalf; members lazy-claim a session on first sign-in via their published key.
+- Key publishing — SSH and GPG. Public surface served at `/{username}.keys`, `/{username}.gpg`, and WKD (`/.well-known/openpgpkey/hu/{zbase32(sha1(localpart))}`) so `gpg --locate-keys` and Ansible's `authorized_key` work without consumer-side config.
+- API tokens (non-interactive bearer credentials) and an org-scoped audit log of state-changing operations.
+- A Go CLI (`src/kini-cli/`) driving sign-up, sign-in, publishing, and token management; routes signing through `ssh-keygen` so YubiKey / FIDO2 / gpg-agent identities work transparently.
+- Editorial-heraldic SPA at the API host: landing, sign-in, sign-up, identities, keys, tokens, dashboard with WebAuthn hardware enrollment.
+
+For an authoritative list of what's *not yet* built, see [`docs/roadmap.md`](roadmap.md).
